@@ -234,7 +234,7 @@ with st.sidebar:
         seed = None
     st.caption("Tip: With a fixed seed, each image uses seed+index for reproducibility.")
 
-prompt = st.text_area("Prompt", value="", height=120, placeholder="A photorealistic portrait...")
+prompt = st.text_area("Prompt", value="", height=120, placeholder="A photorealistic portrait...",key="prompt_input")
 negative_prompt = st.text_area("Negative prompt (optional)", value=DEFAULT_NEG, height=80)
 
 # Preload/instantiate the pipelines (cached)
