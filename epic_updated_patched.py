@@ -2,17 +2,22 @@
 # Streamlit SD (epiCPhotoGasm) app with optional *two* parallel pipelines for faster batches.
 # Drop-in replacement for your original app; adds "Parallel instances" and worker pool.
 # Tested with: torch >= 2.0, diffusers >= 0.25, streamlit >= 1.29
+import streamlit as st
 
+st.set_page_config(
+    page_title="epiCPhotoGasm",  # or APP_TITLE if you prefer
+    page_icon="🖼️",
+    layout="wide"
+)
 import io
 import os
 from typing import List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from packaging import version
 import zipfile
-import streamlit as st
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
-
+from datetime import datetime
 import torch
 from diffusers import (
     StableDiffusionPipeline,
@@ -216,8 +221,8 @@ with st.sidebar:
     parallel_instances = st.select_slider("Parallel instances", options=[1, 2], value=_default_instances(),
                                           help="Run multiple SD pipelines in parallel on the GPU")
     batch_size = st.slider("Batch size", 1, 8, 2)
-    steps = st.slider("Steps", 10, 80, 30)
-    guidance = st.slider("CFG (guidance)", 1.0, 15.0, 7.5, 0.5)
+    steps = st.slider("Steps", 10, 60, 28, key="steps")
+    guidance = st.slider("CFG", 1.0, 12.0, 6.5, 0.5, key="cfg")
 
     sizes = [(512, 512), (640, 640), (768, 768), (832, 832), (896, 896), (1024, 1024)]
     w_h = st.selectbox("Size", options=[f"{w}×{h}" for (w, h) in sizes], index=0)
@@ -234,7 +239,7 @@ prompt = st.text_area("Prompt", value="", height=120, placeholder="A photorealis
 negative_prompt = st.text_area("Negative prompt (optional)", value=DEFAULT_NEG, height=80)
 
 # Preload/instantiate the pipelines (cached)
-pipes, device = load_pipelines(model_id, sched_key, performance_mode, parallel_instances)
+pipes, device = load_pipelines(model_id, sched_key, performance_mode, 2)
 
 # Heads-up for very large settings with 2 instances
 if device == "cuda" and parallel_instances == 2 and (width * height >= 1024 * 1024) and batch_size >= 2:
@@ -247,7 +252,7 @@ with col2:
     clear = st.button("Clear", use_container_width=True)
 
 if clear:
-    st.experimental_rerun()
+    st.rerun()
 
 if go:
     base_seed = seed
@@ -260,7 +265,51 @@ if go:
         pipes, prompt, negative_prompt, steps, guidance, width, height,
         batch_size, base_seed, device
     )
+    out_root = "outputs"
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(out_root, f"run_{ts}")
+    os.makedirs(run_dir, exist_ok=True)
 
+    manifest_path = os.path.join(run_dir, "manifest.jsonl")
+    mf = open(manifest_path, "w", encoding="utf-8")
+
+    saved_files = []
+    for i, img in enumerate(images):
+        meta = {
+            "file": f"image_{i+1:02d}.png",
+            "prompt": prompt,
+            "negative_prompt": negative_prompt or "",
+            "steps": steps,
+            "cfg": guidance,
+            "size": f"{width}x{height}",
+            "seed": seeds_used[i],
+            "scheduler": sched_key,
+            "mode": performance_mode,
+            "model": model_id,
+            "device": device,
+            "timestamp": ts,
+            "index": i + 1,
+        }
+        png_bytes = _png_bytes_with_meta(img, meta)
+
+        # Save to disk for gallery
+        out_path = os.path.join(run_dir, meta["file"])
+        with open(out_path, "wb") as f:
+            f.write(png_bytes)
+        saved_files.append(out_path)
+
+        # Keep showing in the UI (existing behavior)
+        cap = f"Image {i+1}"
+        if seeds_used[i] is not None:
+            cap += f" • seed {seeds_used[i]}"
+        st.image(img, caption=cap, use_column_width=True)
+
+        # Record a manifest line for the gallery page
+        import json as _json
+        mf.write(_json.dumps(meta, ensure_ascii=False) + "\n")
+
+    mf.close()
+    st.success(f"Saved {len(saved_files)} image(s) to: {run_dir}")    
     # Display and collect PNG bytes
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
