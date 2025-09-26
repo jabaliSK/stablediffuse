@@ -3,12 +3,15 @@ import React, { useState } from 'react';
 import axios from 'axios';
 
 // The base URL of your Python API
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://167.179.138.57:41106';
 
 function GenerationPage() {
     const [prompt, setPrompt] = useState('');
     const [negativePrompt, setNegativePrompt] = useState('blurry, low-res, text, watermark');
-    const [batchSize, setBatchSize] = useState(2);
+    
+    // ## NEW CONTROL STATE ##
+    const [batchSize, setBatchSize] = useState(2); 
+
     const [steps, setSteps] = useState(28);
     const [guidance, setGuidance] = useState(6.5);
     const [seed, setSeed] = useState('');
@@ -26,12 +29,11 @@ function GenerationPage() {
         const requestData = {
             prompt,
             negative_prompt: negativePrompt,
-            batch_size: parseInt(batchSize, 10),
+            batch_size: parseInt(batchSize, 10), // This line already uses the state
             steps: parseInt(steps, 10),
             guidance: parseFloat(guidance),
-            // Send seed only if it's a valid number
             seed: seed.trim() ? parseInt(seed, 10) : null,
-            width: 512, // For simplicity, hardcoded for now
+            width: 512,
             height: 512,
         };
 
@@ -50,7 +52,6 @@ function GenerationPage() {
         <div>
             <h1>epiCPhotoGasm Generator</h1>
             <form onSubmit={handleGenerate}>
-                {/* Inputs for prompt, negative prompt, sliders for steps, cfg, etc. */}
                 <textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
@@ -58,8 +59,26 @@ function GenerationPage() {
                     rows={4}
                     required
                 />
-                {/* Add other form controls here... */}
-                 <input
+                <textarea
+                    value={negativePrompt}
+                    onChange={(e) => setNegativePrompt(e.target.value)}
+                    placeholder="Negative prompt..."
+                    rows={2}
+                />
+                
+                {/* ## NEW INPUT FIELD ## */}
+                <label>
+                    Number of images (1-8):
+                    <input
+                        type="number"
+                        value={batchSize}
+                        onChange={(e) => setBatchSize(e.target.value)}
+                        min="1"
+                        max="8" // Set a reasonable max to avoid overloading the backend
+                    />
+                </label>
+
+                <input
                     type="text"
                     value={seed}
                     onChange={(e) => setSeed(e.target.value)}
@@ -72,7 +91,6 @@ function GenerationPage() {
 
             {error && <p style={{ color: 'red' }}>{error}</p>}
 
-            {/* Display Results */}
             <div className="image-grid">
                 {generatedImages.map((image, index) => (
                     <div key={index} className="image-card">

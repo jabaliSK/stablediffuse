@@ -1,24 +1,30 @@
-import logo from './logo.svg';
-import './App.css';
+// src/App.js
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+
+// ## ADD THIS LINE ##
+import './App.css'; 
+
+import GenerationPage from './GenerationPage';
+import GalleryPage from './GalleryPage';
+
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <Router>
+      <div className="App">
+        <nav className="app-nav">
+          <Link to="/">Generator</Link>
+          <Link to="/gallery">Past Images</Link>
+        </nav>
+        <main className="app-content">
+          <Routes>
+            <Route path="/" element={<GenerationPage />} />
+            <Route path="/gallery" element={<GalleryPage />} />
+          </Routes>
+        </main>
+      </div>
+    </Router>
   );
 }
 

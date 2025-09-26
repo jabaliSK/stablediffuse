@@ -1,0 +1,5 @@
+pip install "fastapi[all]" uvicorn torch torchvision torchaudio diffusers transformers accelerate Pillow
+nohup uvicorn stablediffuse.app.main:app --reload --port 8080 &
+cd /workspace/stablediffuse/app/epic-photogasm-ui
+npm install axios
+nohup bash -c 'HOST=0.0.0.0 PORT=8501 npm start' &

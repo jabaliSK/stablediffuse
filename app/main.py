@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 
 import torch
-from diffusers import StableDiffusionPipeline, EulerAncestralDiscreteScheduler, DPMSolverMultepScheduler
+from diffusers import StableDiffusionPipeline, EulerAncestralDiscreteScheduler, DPMSolverMultistepScheduler # CORRECTED LINE
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
@@ -64,7 +64,7 @@ app = FastAPI(title=APP_TITLE)
 # IMPORTANT: Add CORS middleware to allow requests from your React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # The address of your React app
+    allow_origins=["*"],  # The address of your React app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
