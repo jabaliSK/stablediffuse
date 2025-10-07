@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
-const API_URL = 'http://167.179.138.57:41106';
+const API_URL = 'IP:PORT';
 
 function GalleryPage() {
     const [images, setImages] = useState([]);

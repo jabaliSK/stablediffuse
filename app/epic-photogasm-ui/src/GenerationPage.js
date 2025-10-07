@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 
 // The base URL of your Python API
-const API_URL = 'http://167.179.138.57:41106';
+const API_URL = 'IP:PORT';
 
 function GenerationPage() {
     const [prompt, setPrompt] = useState('');

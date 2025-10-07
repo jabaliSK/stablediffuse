@@ -1,5 +1,12 @@
-pip install "fastapi[all]" uvicorn torch torchvision torchaudio diffusers transformers accelerate Pillow
-nohup uvicorn stablediffuse.app.main:app --reload --port 8080 &
+git clone https://github.com/jabaliSK/stablediffuse.git
+PORT=$(vastai show instances --raw | jq -r '.[0].ports["8080/tcp"][0].HostPort')
+IP=$(vastai show instances --raw | jq -r '.[0].public_ipaddr')
+sed -i "s#const API_URL = '.*';#const API_URL = 'http://$IP:$PORT';#" stablediffuse/app/epic-photogasm-ui/src/GenerationPage.js
+sed -i "s#const API_URL = '.*';#const API_URL = 'http://$IP:$PORT';#" stablediffuse/app/epic-photogasm-ui/src/GalleryPage.js
+pip install "fastapi[all]" uvicorn torch torchvision torchaudio diffusers accelerate Pillow
+pip install transformers==4.56.2
+nohup uvicorn stablediffuse.app.main:app --reload --port 8080 --host 0.0.0.0 &
 cd /workspace/stablediffuse/app/epic-photogasm-ui
 npm install axios
+npm install react-router-dom
 nohup bash -c 'HOST=0.0.0.0 PORT=8501 npm start' &
