@@ -1,30 +1,51 @@
 // src/App.js
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-
-// ## ADD THIS LINE ##
-import './App.css'; 
-
+import React, { useState } from 'react';
 import GenerationPage from './GenerationPage';
+import Img2ImgPage from './Img2ImgPage'; // We will create this
 import GalleryPage from './GalleryPage';
 
-
 function App() {
+  const [page, setPage] = useState('txt2img'); // 'txt2img', 'img2img', 'gallery'
+
+  const renderPage = () => {
+    switch (page) {
+      case 'txt2img':
+        return <GenerationPage />;
+      case 'img2img':
+        return <Img2ImgPage />;
+      case 'gallery':
+        return <GalleryPage />;
+      default:
+        return <GenerationPage />;
+    }
+  };
+
   return (
-    <Router>
-      <div className="App">
-        <nav className="app-nav">
-          <Link to="/">Generator</Link>
-          <Link to="/gallery">Past Images</Link>
-        </nav>
-        <main className="app-content">
-          <Routes>
-            <Route path="/" element={<GenerationPage />} />
-            <Route path="/gallery" element={<GalleryPage />} />
-          </Routes>
-        </main>
-      </div>
-    </Router>
+    <div className="app-container">
+      <nav className="app-nav">
+        <button 
+          onClick={() => setPage('txt2img')} 
+          className={page === 'txt2img' ? 'active' : ''}
+        >
+          Text-to-Image
+        </button>
+        <button 
+          onClick={() => setPage('img2img')} 
+          className={page === 'img2img' ? 'active' : ''}
+        >
+          Image-to-Image
+        </button>
+        <button 
+          onClick={() => setPage('gallery')} 
+          className={page === 'gallery' ? 'active' : ''}
+        >
+          Gallery
+        </button>
+      </nav>
+      <main className="app-content">
+        {renderPage()}
+      </main>
+    </div>
   );
 }
 
