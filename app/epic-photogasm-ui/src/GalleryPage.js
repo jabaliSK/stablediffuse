@@ -2,19 +2,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 
-const API_URL = 'IP:PORT';
+const API_URL = 'http://127.0.0.1:8000'; // <-- REMEMBER TO SET YOUR IP:PORT
 
 function GalleryPage() {
-    const [images, setImages] = useState([]);
+    const [images, setImages] = useState([]); // State name is fine
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    // ## NEW STATE: Track the index of the currently selected image ##
-    // `null` means the modal is closed.
     const [selectedIndex, setSelectedIndex] = useState(null);
-    const [touchStart, setTouchStart] = useState(null); // For swipe detection
+    const [touchStart, setTouchStart] = useState(null);
 
-    // Fetch gallery data when the component loads
     useEffect(() => {
         const fetchGallery = async () => {
             try {
@@ -30,7 +27,6 @@ function GalleryPage() {
         fetchGallery();
     }, []);
 
-    // ## NEW HANDLERS: For navigation ##
     const openModal = (index) => setSelectedIndex(index);
     const closeModal = () => setSelectedIndex(null);
 
@@ -44,7 +40,6 @@ function GalleryPage() {
         setSelectedIndex((prevIndex) => (prevIndex - 1 + images.length) % images.length);
     }, [selectedIndex, images.length]);
 
-    // ## NEW EFFECT: Add keyboard navigation (left/right arrows) ##
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (selectedIndex === null) return;
@@ -60,7 +55,6 @@ function GalleryPage() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [selectedIndex, goToNext, goToPrevious]);
     
-    // ## NEW HANDLERS: For touch/swipe gestures ##
     const handleTouchStart = (e) => {
         setTouchStart(e.targetTouches[0].clientX);
     };
@@ -70,53 +64,69 @@ function GalleryPage() {
         const touchEnd = e.targetTouches[0].clientX;
         const diff = touchStart - touchEnd;
 
-        // Swipe left (next image)
         if (diff > 50) {
             goToNext();
-            setTouchStart(null); // Reset after swipe
+            setTouchStart(null);
         }
-
-        // Swipe right (previous image)
         if (diff < -50) {
             goToPrevious();
-            setTouchStart(null); // Reset after swipe
+            setTouchStart(null);
         }
     };
 
-
     if (loading) return <p>Loading gallery...</p>;
     if (error) return <p style={{ color: 'red' }}>{error}</p>;
-    if (images.length === 0) return <p>No images found. Generate some first!</p>;
+    if (images.length === 0) return <p>No videos found. Generate some first!</p>;
 
     return (
         <div>
-            <h1>Past Images</h1>
+            <h1>Past Videos</h1>
             {/* --- Thumbnail Grid --- */}
             <div className="gallery-grid">
-                {images.map((imgMeta, index) => (
+                {images.map((videoMeta, index) => (
                     <div key={index} className="gallery-item" onClick={() => openModal(index)}>
-                        <img src={`${API_URL}${imgMeta.url}`} alt={imgMeta.prompt} />
+                        {/* ## CHANGED from <img> to <video> ## */}
+                        <video
+                            src={`${API_URL}${videoMeta.url}`}
+                            alt={videoMeta.prompt}
+                            loop
+                            autoPlay
+                            muted
+                        />
                         <div className="gallery-info">
-                            <p><strong>Seed:</strong> {imgMeta.seed}</p>
+                            <p><strong>Seed:</strong> {videoMeta.seed}</p>
                         </div>
                     </div>
                 ))}
             </div>
 
-            {/* --- ## NEW: Modal/Lightbox View ## --- */}
+            {/* --- Modal/Lightbox View --- */}
             {selectedIndex !== null && (
                 <div className="modal-overlay" onClick={closeModal}>
                     <div className="modal-content" onClick={(e) => e.stopPropagation()} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove}>
                         <button className="modal-close" onClick={closeModal}>&times;</button>
                         <button className="modal-nav prev" onClick={goToPrevious}>&#10094;</button>
                         
-                        <img src={`${API_URL}${images[selectedIndex].url}`} alt={images[selectedIndex].prompt} />
+                        {/* ## CHANGED from <img> to <video> ## */}
+                        <video
+                            src={`${API_URL}${images[selectedIndex].url}`}
+                            alt={images[selectedIndex].prompt}
+                            controls
+                            loop
+                            autoPlay
+                        />
                         
                         <button className="modal-nav next" onClick={goToNext}>&#10095;</button>
                         
                         <div className="modal-caption">
                            <p><strong>Prompt:</strong> {images[selectedIndex].prompt}</p>
-                           <p><strong>Seed:</strong> {images[selectedIndex].seed} | <strong>Steps:</strong> {images[selectedIndex].steps} | <strong>CFG:</strong> {images[selectedIndex].cfg}</p>
+                           {/* ## ADDED num_frames ## */}
+                           <p>
+                                <strong>Seed:</strong> {images[selectedIndex].seed} | 
+                                <strong>Steps:</strong> {images[selectedIndex].steps} | 
+                                <strong>CFG:</strong> {images[selectedIndex].cfg} |
+                                <strong>Frames:</strong> {images[selectedIndex].num_frames}
+                           </p>
                         </div>
                     </div>
                 </div>

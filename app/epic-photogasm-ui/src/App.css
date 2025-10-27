@@ -57,6 +57,16 @@ input[type="number"] {
   box-sizing: border-box; /* Important for padding */
 }
 
+/* ## NEW: Style for form labels ## */
+label {
+  text-align: left;
+  font-weight: bold;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
 button {
   padding: 0.8rem 1.5rem;
   border: none;
@@ -78,7 +88,7 @@ button:hover:not(:disabled) {
   background-color: #88eaff;
 }
 
-/* --- Image Grid Styles --- */
+/* --- Video Grid Styles --- */
 .image-grid, .gallery-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(256px, 1fr));
@@ -93,7 +103,9 @@ button:hover:not(:disabled) {
   padding: 1rem;
 }
 
-.image-card img, .gallery-item img {
+/* ## UPDATED SELECTOR: Apply to <img> AND <video> ## */
+.image-card img, .gallery-item img,
+.image-card video, .gallery-item video {
   width: 100%;
   height: auto;
   display: block;
@@ -114,7 +126,7 @@ button:hover:not(:disabled) {
   transform: scale(1.03);
 }
 
-/* --- ## NEW: Modal/Lightbox Styles ## --- */
+/* --- Modal/Lightbox Styles --- */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -124,7 +136,7 @@ button:hover:not(:disabled) {
   background-color: rgba(0, 0, 0, 0.85);
   display: flex;
   justify-content: center;
-  align-items: center;
+  align: center;
   z-index: 1000;
 }
 
@@ -138,7 +150,9 @@ button:hover:not(:disabled) {
   align-items: center;
 }
 
-.modal-content img {
+/* ## UPDATED SELECTOR: Apply to <img> AND <video> ## */
+.modal-content img,
+.modal-content video {
   max-width: 100%;
   max-height: 80vh; /* Allow space for caption */
   object-fit: contain;

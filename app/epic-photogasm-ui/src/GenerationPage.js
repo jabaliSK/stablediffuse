@@ -3,21 +3,23 @@ import React, { useState } from 'react';
 import axios from 'axios';
 
 // The base URL of your Python API
-const API_URL = 'IP:PORT';
+const API_URL = 'http://127.0.0.1:8000'; // <-- REMEMBER TO SET YOUR IP:PORT
 
 function GenerationPage() {
     const [prompt, setPrompt] = useState('');
     const [negativePrompt, setNegativePrompt] = useState('blurry, low-res, text, watermark');
     
-    // ## NEW CONTROL STATE ##
-    const [batchSize, setBatchSize] = useState(2); 
+    const [batchSize, setBatchSize] = useState(1); // Default to 1 for video
+    
+    // ## NEW STATE for Video ##
+    const [numFrames, setNumFrames] = useState(16);
 
     const [steps, setSteps] = useState(28);
     const [guidance, setGuidance] = useState(6.5);
     const [seed, setSeed] = useState('');
 
     const [loading, setLoading] = useState(false);
-    const [generatedImages, setGeneratedImages] = useState([]);
+    const [generatedImages, setGeneratedImages] = useState([]); // State name is fine
     const [error, setError] = useState(null);
 
     const handleGenerate = async (e) => {
@@ -29,9 +31,10 @@ function GenerationPage() {
         const requestData = {
             prompt,
             negative_prompt: negativePrompt,
-            batch_size: parseInt(batchSize, 10), // This line already uses the state
+            batch_size: parseInt(batchSize, 10),
             steps: parseInt(steps, 10),
             guidance: parseFloat(guidance),
+            num_frames: parseInt(numFrames, 10), // ## ADD num_frames ##
             seed: seed.trim() ? parseInt(seed, 10) : null,
             width: 512,
             height: 512,
@@ -41,7 +44,7 @@ function GenerationPage() {
             const response = await axios.post(`${API_URL}/generate`, requestData);
             setGeneratedImages(response.data.images);
         } catch (err) {
-            setError('An error occurred during image generation.');
+            setError('An error occurred during video generation.');
             console.error(err);
         } finally {
             setLoading(false);
@@ -50,12 +53,12 @@ function GenerationPage() {
 
     return (
         <div>
-            <h1>epiCPhotoGasm Generator</h1>
+            <h1>HunyuanVideo Generator</h1>
             <form onSubmit={handleGenerate}>
                 <textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="A photorealistic portrait..."
+                    placeholder="A cinematic video of..."
                     rows={4}
                     required
                 />
@@ -66,15 +69,26 @@ function GenerationPage() {
                     rows={2}
                 />
                 
-                {/* ## NEW INPUT FIELD ## */}
                 <label>
-                    Number of images (1-8):
+                    Number of videos (1-4):
                     <input
                         type="number"
                         value={batchSize}
                         onChange={(e) => setBatchSize(e.target.value)}
                         min="1"
-                        max="8" // Set a reasonable max to avoid overloading the backend
+                        max="4" // Keep this low for video
+                    />
+                </label>
+                
+                {/* ## NEW INPUT FIELD for Video ## */}
+                <label>
+                    Number of frames (e.g., 16-32):
+                    <input
+                        type="number"
+                        value={numFrames}
+                        onChange={(e) => setNumFrames(e.target.value)}
+                        min="8"
+                        max="64"
                     />
                 </label>
 
@@ -92,10 +106,18 @@ function GenerationPage() {
             {error && <p style={{ color: 'red' }}>{error}</p>}
 
             <div className="image-grid">
-                {generatedImages.map((image, index) => (
+                {generatedImages.map((video, index) => (
                     <div key={index} className="image-card">
-                        <img src={`${API_URL}${image.url}`} alt={`Generated image with seed ${image.seed}`} />
-                        <p>Seed: {image.seed}</p>
+                        {/* ## CHANGED from <img> to <video> ## */}
+                        <video
+                            src={`${API_URL}${video.url}`}
+                            controls
+                            loop
+                            autoPlay
+                            muted
+                            alt={`Generated video with seed ${video.seed}`}
+                        />
+                        <p>Seed: {video.seed}</p>
                     </div>
                 ))}
             </div>

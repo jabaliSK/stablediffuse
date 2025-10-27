@@ -2,7 +2,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 
-// ## ADD THIS LINE ##
 import './App.css'; 
 
 import GenerationPage from './GenerationPage';
@@ -15,7 +14,8 @@ function App() {
       <div className="App">
         <nav className="app-nav">
           <Link to="/">Generator</Link>
-          <Link to="/gallery">Past Images</Link>
+          {/* ## CHANGED "Past Images" to "Past Videos" ## */}
+          <Link to="/gallery">Past Videos</Link>
         </nav>
         <main className="app-content">
           <Routes>
