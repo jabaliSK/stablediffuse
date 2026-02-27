@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DreamPhotoGASM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Hide scrollbar for clean UI */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Mobile safe area padding */
+        .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans h-screen flex flex-col overflow-hidden selection:bg-pink-500 selection:text-white">
+
+    <!-- Top Bar (Mobile Only) -->
+    <div class="md:hidden flex justify-between items-center p-4 glass border-b border-gray-800 z-20">
+        <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-violet-500">
+            DreamGASM
+        </h1>
+        <div id="connectionStatus" class="h-2 w-2 rounded-full bg-red-500"></div>
+    </div>
+
+    <div class="flex flex-1 overflow-hidden relative">
+        
+        <!-- Sidebar (Desktop) / Drawer (Mobile) -->
+        <aside class="w-full md:w-96 bg-gray-900 border-r border-gray-800 flex flex-col z-10 md:relative absolute inset-0 md:translate-y-0 transform transition-transform duration-300 ease-in-out translate-y-full" id="controlsPanel">
+            <!-- Mobile Handle -->
+            <div class="md:hidden w-12 h-1 bg-gray-700 rounded-full mx-auto mt-3 mb-1" onclick="toggleControls()"></div>
+
+            <div class="p-6 flex-1 overflow-y-auto no-scrollbar">
+                <h2 class="hidden md:block text-2xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-pink-500 to-violet-500">DreamPhotoGASM</h2>
+                
+                <form id="genForm" class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Prompt</label>
+                        <textarea id="prompt" rows="4" class="w-full bg-gray-800 border border-gray-700 rounded-xl p-4 text-sm focus:ring-2 focus:ring-pink-500 outline-none transition placeholder-gray-600" placeholder="A futuristic cyberpunk city with neon lights..." required></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Negative Prompt</label>
+                        <textarea id="negative_prompt" rows="2" class="w-full bg-gray-800 border border-gray-700 rounded-xl p-4 text-sm focus:ring-2 focus:ring-pink-500 outline-none transition placeholder-gray-600" placeholder="blur, ugly, low quality">blur, low quality, distortion, ugly, bad anatomy</textarea>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Size</label>
+                            <select id="size" class="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-sm outline-none focus:border-pink-500">
+                                <option value="512x512">512x512 (Square)</option>
+                                <option value="512x768">512x768 (Portrait)</option>
+                                <option value="768x512">768x512 (Landscape)</option>
+                                <option value="768x768">768x768 (Large)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Steps</label>
+                            <input type="number" id="steps" value="25" min="1" max="100" class="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-sm outline-none focus:border-pink-500">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+                            <span>Guidance Scale</span>
+                            <span id="guidanceValue">7.5</span>
+                        </label>
+                        <input type="range" id="guidance" min="1" max="20" step="0.5" value="7.5" class="w-full accent-pink-500 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <button type="submit" id="generateBtn" class="w-full bg-gradient-to-r from-pink-600 to-violet-600 hover:from-pink-500 hover:to-violet-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-pink-900/20 transition transform active:scale-95 flex items-center justify-center gap-2">
+                        <i data-lucide="sparkles" class="w-5 h-5"></i>
+                        <span>Generate</span>
+                    </button>
+                </form>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 flex flex-col relative w-full">
+            
+            <!-- Tabs (Desktop Only - Mobile uses Bottom Nav) -->
+            <div class="hidden md:flex border-b border-gray-800 bg-gray-900/50 backdrop-blur">
+                <button onclick="switchTab('feed')" id="tab-feed" class="px-6 py-4 text-sm font-medium text-pink-500 border-b-2 border-pink-500 transition-colors">Current Batch</button>
+                <button onclick="switchTab('gallery')" id="tab-gallery" class="px-6 py-4 text-sm font-medium text-gray-400 hover:text-gray-200 transition-colors">History Gallery</button>
+            </div>
+
+            <!-- Scrollable Content -->
+            <div id="contentArea" class="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 scroll-smooth">
+                
+                <!-- Feed Section -->
+                <section id="view-feed" class="max-w-7xl mx-auto w-full">
+                    <div id="loadingIndicator" class="hidden mb-8">
+                        <div class="flex flex-col items-center justify-center py-12 bg-gray-900/50 rounded-2xl border border-gray-800 border-dashed animate-pulse">
+                            <div class="h-10 w-10 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                            <p class="text-pink-400 font-medium">Dreaming up your image...</p>
+                            <p class="text-xs text-gray-500 mt-2">Running on vLLM/Diffusers</p>
+                        </div>
+                    </div>
+
+                    <!-- Feed Grid -->
+                    <div id="feedGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <!-- Images injected here -->
+                    </div>
+                    
+                    <div id="emptyFeed" class="flex flex-col items-center justify-center h-[50vh] text-gray-600">
+                        <i data-lucide="image" class="w-16 h-16 mb-4 opacity-20"></i>
+                        <p>Start creating to see images here.</p>
+                        <button onclick="toggleControls()" class="md:hidden mt-4 text-pink-500 font-medium">Open Controls</button>
+                    </div>
+                </section>
+
+                <!-- Gallery Section -->
+                <section id="view-gallery" class="hidden max-w-7xl mx-auto w-full">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-xl font-bold">Server History</h2>
+                        <button onclick="switchTab('gallery')" class="text-xs text-pink-400 hover:text-pink-300 flex items-center gap-1">
+                            <i data-lucide="refresh-cw" class="w-3 h-3"></i> Refresh
+                        </button>
+                    </div>
+                    <div id="galleryGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                        <!-- Gallery items injected here -->
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Bottom Navigation (Mobile Only) -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 glass border-t border-gray-800 flex justify-around items-center p-2 safe-pb z-30">
+        <button onclick="switchTab('feed')" id="nav-feed" class="p-3 rounded-xl text-pink-500 flex flex-col items-center gap-1">
+            <i data-lucide="layers" class="w-6 h-6"></i>
+            <span class="text-[10px]">Feed</span>
+        </button>
+        
+        <button onclick="toggleControls()" class="p-3 -mt-8 bg-pink-600 rounded-full shadow-lg shadow-pink-900/50 text-white flex items-center justify-center">
+            <i data-lucide="plus" class="w-8 h-8"></i>
+        </button>
+        
+        <button onclick="switchTab('gallery')" id="nav-gallery" class="p-3 rounded-xl text-gray-400 flex flex-col items-center gap-1">
+            <i data-lucide="grid" class="w-6 h-6"></i>
+            <span class="text-[10px]">History</span>
+        </button>
+    </nav>
+
+    <!-- Fullscreen Lightbox Modal -->
+    <div id="lightbox" class="fixed inset-0 bg-black/95 z-50 hidden flex flex-col items-center justify-center opacity-0 transition-opacity duration-300">
+        <button onclick="closeLightbox()" class="absolute top-4 right-4 p-2 bg-gray-800/50 rounded-full text-white hover:bg-gray-700 z-50">
+            <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+        
+        <div class="flex-1 w-full h-full flex items-center justify-center p-4">
+            <img id="lightboxImage" src="" class="max-w-full max-h-full object-contain rounded-sm shadow-2xl transform transition-transform duration-200" alt="Full screen view">
+        </div>
+        
+        <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black via-black/80 to-transparent p-6 pb-8 safe-pb">
+            <p id="lightboxPrompt" class="text-sm text-gray-200 font-medium line-clamp-3 md:line-clamp-none"></p>
+            <div class="flex gap-4 mt-4 justify-center">
+                <button onclick="downloadLightboxImage()" class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg text-sm transition">
+                    <i data-lucide="download" class="w-4 h-4"></i> Save
+                </button>
+                <button onclick="reusePrompt()" class="flex items-center gap-2 bg-pink-600 hover:bg-pink-500 px-4 py-2 rounded-lg text-sm transition">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Reuse
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Icons & UI Init ---
+        lucide.createIcons();
+        const apiBase = ""; // Relative path
+
+        // Range slider value update
+        document.getElementById('guidance').addEventListener('input', (e) => {
+            document.getElementById('guidanceValue').textContent = e.target.value;
+        });
+
+        // --- 2. Main Logic ---
+
+        // State
+        let currentLightboxImage = null;
+        let isControlsOpen = false;
+
+        // Toggle Controls (Mobile)
+        function toggleControls() {
+            const panel = document.getElementById('controlsPanel');
+            isControlsOpen = !isControlsOpen;
+            
+            if (isControlsOpen) {
+                // Open: Slide up from bottom
+                panel.classList.remove('translate-y-full');
+                panel.classList.add('translate-y-0');
+                // Ensure z-index is high
+                panel.classList.add('fixed', 'inset-0', 'z-40');
+                panel.classList.remove('md:relative');
+            } else {
+                // Close
+                panel.classList.remove('translate-y-0');
+                panel.classList.add('translate-y-full');
+                // Reset desktop classes
+                setTimeout(() => {
+                   if(window.innerWidth >= 768) {
+                       panel.classList.remove('fixed', 'inset-0', 'z-40', 'translate-y-full');
+                       panel.classList.add('md:relative', 'translate-y-0');
+                   }
+                }, 300);
+            }
+        }
+
+        // Handle Tab Switching
+        function switchTab(tab) {
+            const feedView = document.getElementById('view-feed');
+            const galleryView = document.getElementById('view-gallery');
+            const tabFeed = document.getElementById('tab-feed');
+            const tabGallery = document.getElementById('tab-gallery');
+            const navFeed = document.getElementById('nav-feed');
+            const navGallery = document.getElementById('nav-gallery');
+
+            if (tab === 'feed') {
+                feedView.classList.remove('hidden');
+                galleryView.classList.add('hidden');
+                
+                // Desktop styles
+                tabFeed?.classList.add('text-pink-500', 'border-b-2');
+                tabFeed?.classList.remove('text-gray-400');
+                tabGallery?.classList.remove('text-pink-500', 'border-b-2');
+                
+                // Mobile styles
+                navFeed?.classList.add('text-pink-500');
+                navFeed?.classList.remove('text-gray-400');
+                navGallery?.classList.remove('text-pink-500');
+            } else {
+                feedView.classList.add('hidden');
+                galleryView.classList.remove('hidden');
+                
+                // Fetch history from server instead of local DB
+                loadServerHistory();
+
+                // Desktop styles
+                tabGallery?.classList.add('text-pink-500', 'border-b-2');
+                tabGallery?.classList.remove('text-gray-400');
+                tabFeed?.classList.remove('text-pink-500', 'border-b-2');
+
+                // Mobile styles
+                navGallery?.classList.add('text-pink-500');
+                navGallery?.classList.remove('text-gray-400');
+                navFeed?.classList.remove('text-pink-500');
+            }
+        }
+
+        // Generate Image
+        document.getElementById('genForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // On mobile, close controls to show feed
+            if (window.innerWidth < 768) toggleControls();
+
+            const prompt = document.getElementById('prompt').value;
+            const negative_prompt = document.getElementById('negative_prompt').value;
+            const steps = parseInt(document.getElementById('steps').value);
+            const guidance = parseFloat(document.getElementById('guidance').value);
+            const size = document.getElementById('size').value;
+
+            // Show loader
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+            document.getElementById('emptyFeed').classList.add('hidden');
+
+            try {
+                // Change format to 'url' to get server path
+                const response = await fetch(`${apiBase}/v1/images/generations`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt, negative_prompt, n: 1, size, steps, guidance_scale: guidance, response_format: "url"
+                    })
+                });
+
+                if (!response.ok) throw new Error('Generation failed');
+
+                const data = await response.json();
+                
+                // The server returns a URL now
+                const imageUrl = data.data[0].url; 
+                
+                // Add to Feed UI
+                addToFeed(imageUrl, prompt, size);
+
+            } catch (error) {
+                alert("Error: " + error.message);
+            } finally {
+                document.getElementById('loadingIndicator').classList.add('hidden');
+            }
+        });
+
+        function addToFeed(imageUrl, prompt, size) {
+            const grid = document.getElementById('feedGrid');
+            const card = document.createElement('div');
+            // Aspect ratio handling for grid
+            let aspectClass = "aspect-square";
+            if(size.includes("512x768")) aspectClass = "aspect-[2/3]";
+            if(size.includes("768x512")) aspectClass = "aspect-[3/2]";
+
+            card.className = "group relative bg-gray-800 rounded-xl overflow-hidden shadow-lg transition hover:scale-[1.02]";
+            card.innerHTML = `
+                <img src="${imageUrl}" class="w-full h-full object-cover ${aspectClass}" loading="lazy">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
+                    <p class="text-xs text-white line-clamp-2 mb-2">${prompt}</p>
+                    <button onclick='openLightbox("${imageUrl}", "${prompt.replace(/"/g, '&quot;')}")' class="bg-pink-600 text-white text-xs py-2 px-3 rounded-lg font-bold w-full">View Full</button>
+                </div>
+            `;
+            // Insert at top
+            grid.insertBefore(card, grid.firstChild);
+        }
+
+        // Server History Logic
+        async function loadServerHistory() {
+            const grid = document.getElementById('galleryGrid');
+            grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-8">Loading history...</div>';
+            
+            try {
+                const res = await fetch(`${apiBase}/history`);
+                const history = await res.json();
+                
+                grid.innerHTML = "";
+                
+                if (history.length === 0) {
+                     grid.innerHTML = '<div class="col-span-full text-center text-gray-500 py-8">No images found on server.</div>';
+                     return;
+                }
+
+                history.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = "relative aspect-square bg-gray-800 rounded-lg overflow-hidden cursor-pointer border border-gray-700 hover:border-pink-500 transition";
+                    div.innerHTML = `<img src="${item.url}" class="w-full h-full object-cover" loading="lazy">`;
+                    div.onclick = () => openLightbox(item.url, item.prompt);
+                    grid.appendChild(div);
+                });
+            } catch(e) {
+                grid.innerHTML = `<div class="col-span-full text-center text-red-400 py-8">Failed to load history</div>`;
+            }
+        }
+
+        // Lightbox Logic
+        function openLightbox(url, prompt) {
+            currentLightboxImage = { url, prompt };
+            const lb = document.getElementById('lightbox');
+            document.getElementById('lightboxImage').src = url;
+            document.getElementById('lightboxPrompt').textContent = prompt;
+            
+            lb.classList.remove('hidden');
+            // Small delay for fade in
+            setTimeout(() => lb.classList.remove('opacity-0'), 10);
+        }
+
+        function closeLightbox() {
+            const lb = document.getElementById('lightbox');
+            lb.classList.add('opacity-0');
+            setTimeout(() => lb.classList.add('hidden'), 300);
+        }
+
+        function downloadLightboxImage() {
+            if(!currentLightboxImage) return;
+            const a = document.createElement('a');
+            a.href = currentLightboxImage.url;
+            a.download = `dreamgasm-${Date.now()}.png`;
+            a.target = "_blank"; // Helper for some mobile browsers
+            a.click();
+        }
+
+        function reusePrompt() {
+            if(!currentLightboxImage) return;
+            document.getElementById('prompt').value = currentLightboxImage.prompt;
+            closeLightbox();
+            if (window.innerWidth < 768) toggleControls(); // Open controls on mobile
+            switchTab('feed');
+        }
+
+        // Initialize: Check server health
+        fetch(`${apiBase}/health`).then(r => r.json()).then(d => {
+            document.getElementById('connectionStatus').classList.remove('bg-red-500');
+            document.getElementById('connectionStatus').classList.add('bg-green-500', 'shadow-[0_0_10px_rgba(34,197,94,0.5)]');
+        }).catch(e => console.log("Offline"));
+
+    </script>
+</body>
+</html>
