@@ -17,12 +17,15 @@ const swipePower = (offset: number, velocity: number) => {
 export default function Carousel({ images, initialIndex, onClose }: CarouselProps) {
   const [[page, direction], setPage] = useState([initialIndex, 0]);
   const [showInfo, setShowInfo] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [lastTap, setLastTap] = useState(0);
 
   // Wrap around index
   const imageIndex = ((page % images.length) + images.length) % images.length;
 
   const paginate = useCallback((newDirection: number) => {
     setPage([page + newDirection, newDirection]);
+    setIsZoomed(false);
   }, [page]);
 
   useEffect(() => {
@@ -35,21 +38,12 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [paginate, onClose]);
 
-  const variants = {
-    enter: (direction: number) => ({
-      x: direction > 0 ? 1000 : -1000,
-      opacity: 0
-    }),
-    center: {
-      zIndex: 1,
-      x: 0,
-      opacity: 1
-    },
-    exit: (direction: number) => ({
-      zIndex: 0,
-      x: direction < 0 ? 1000 : -1000,
-      opacity: 0
-    })
+  const handleTap = () => {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      setIsZoomed(!isZoomed);
+    }
+    setLastTap(now);
   };
 
   const currentImage = images[imageIndex];
@@ -62,11 +56,11 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
       className="fixed inset-0 z-50 bg-black flex items-center justify-center"
     >
       {/* Top Bar */}
-      <div className="absolute top-0 inset-x-0 p-4 flex items-center justify-between z-50 bg-gradient-to-b from-black/80 to-transparent">
-        <div className="text-zinc-400 text-sm font-medium">
+      <div className="absolute top-0 inset-x-0 p-4 flex items-center justify-between z-50 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+        <div className="text-zinc-400 text-sm font-medium pointer-events-auto">
           {imageIndex + 1} / {images.length}
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 pointer-events-auto">
           <button 
             onClick={() => setShowInfo(!showInfo)}
             className={`p-2 rounded-full transition-colors ${showInfo ? 'bg-white/20 text-white' : 'bg-white/10 text-zinc-300 hover:bg-white/20'}`}
@@ -83,24 +77,51 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
       </div>
 
       {/* Image Container */}
-      <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+      <div 
+        className="relative w-full h-full flex items-center justify-center overflow-hidden"
+        onClick={handleTap}
+      >
         <AnimatePresence initial={false} custom={direction}>
           <motion.img
             key={page}
             src={currentImage.url}
             custom={direction}
-            variants={variants}
+            variants={{
+              enter: (direction: number) => ({
+                x: direction > 0 ? 1000 : -1000,
+                opacity: 0,
+                scale: 1,
+                y: 0
+              }),
+              center: {
+                zIndex: 1,
+                x: 0,
+                y: 0,
+                opacity: 1,
+                scale: isZoomed ? 2.5 : 1
+              },
+              exit: (direction: number) => ({
+                zIndex: 0,
+                x: direction < 0 ? 1000 : -1000,
+                opacity: 0,
+                scale: 1,
+                y: 0
+              })
+            }}
             initial="enter"
             animate="center"
             exit="exit"
             transition={{
               x: { type: "spring", stiffness: 300, damping: 30 },
-              opacity: { duration: 0.2 }
+              y: { type: "spring", stiffness: 300, damping: 30 },
+              opacity: { duration: 0.2 },
+              scale: { type: "spring", stiffness: 300, damping: 30 }
             }}
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={1}
+            drag={isZoomed ? true : "x"}
+            dragConstraints={isZoomed ? { left: -500, right: 500, top: -500, bottom: 500 } : { left: 0, right: 0 }}
+            dragElastic={isZoomed ? 0.2 : 1}
             onDragEnd={(e, { offset, velocity }) => {
+              if (isZoomed) return;
               const swipe = swipePower(offset.x, velocity.x);
               if (swipe < -swipeConfidenceThreshold) {
                 paginate(1);
@@ -108,8 +129,10 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
                 paginate(-1);
               }
             }}
-            className="absolute max-w-full max-h-full object-contain"
+            className={`absolute max-w-full max-h-full object-contain ${isZoomed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
             alt={currentImage.prompt}
+            onClick={(e) => e.stopPropagation()} // Prevent double tap on container when dragging
+            onPointerDown={handleTap} // Use pointer down for better touch response on the image itself
           />
         </AnimatePresence>
       </div>
@@ -137,9 +160,9 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black via-black/80 to-transparent z-40"
+            className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black via-black/80 to-transparent z-40 pointer-events-none"
           >
-            <div className="max-w-xl mx-auto space-y-3">
+            <div className="max-w-xl mx-auto space-y-3 pointer-events-auto">
               <p className="text-white text-sm leading-relaxed">
                 {currentImage.prompt}
               </p>
