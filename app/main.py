@@ -1,195 +1,197 @@
-# main.py
 import os
 import io
 import json
 import glob
-import zipfile
+import torch
+import asyncio
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 
-import torch
-from diffusers import StableDiffusionPipeline, EulerAncestralDiscreteScheduler, DPMSolverMultistepScheduler # CORRECTED LINE
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+
+from diffusers import StableDiffusionPipeline, EulerAncestralDiscreteScheduler
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from starlette.staticfiles import StaticFiles
-
-# --- Configuration & Model Loading (Adapted from your script) ---
-
+# --- Configuration ---
 APP_TITLE = "epiCPhotoGasm API"
 MODEL_ID = "Yntec/epiCPhotoGasm"
 DEFAULT_NEG = "blurry, low-res, overexposed, extra fingers, deformed, text, watermark, logo"
 OUTPUT_DIR = "outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# This function is almost identical to your original one
-@torch.inference_mode()
-def load_pipelines(num_instances: int = 1):
-    """Loads the ML model pipelines into memory."""
-    # Simplified device/dtype detection
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.float16 if device == "cuda" else torch.float32
-    
-    # Safety: collapse to 1 on non-CUDA
-    if device != "cuda":
-        num_instances = 1
+# --- Model Management ---
+class ModelManager:
+    def __init__(self):
+        self.pipes = []
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.dtype = torch.float16 if self.device == "cuda" else torch.float32
+        self.executor = None
+
+    def load_models(self, num_instances: int = 1):
+        if self.device != "cuda":
+            num_instances = 1
         
-    pipes = []
-    for _ in range(num_instances):
-        pipe = StableDiffusionPipeline.from_pretrained(
-            MODEL_ID,
-            torch_dtype=dtype,
-            safety_checker=None,
-            use_safetensors=True,
-        )
-        pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
-        pipe = pipe.to(device)
-        # Optional performance tweaks can be added here
-        pipes.append(pipe)
+        print(f"🚀 Loading {num_instances} instance(s) on {self.device}...")
+        for _ in range(num_instances):
+            pipe = StableDiffusionPipeline.from_pretrained(
+                MODEL_ID,
+                torch_dtype=self.dtype,
+                use_safetensors=True,
+                safety_checker=None 
+            )
+            pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
+            pipe = pipe.to(self.device)
+            # Enable memory optimizations if using CUDA
+            if self.device == "cuda":
+                pipe.enable_attention_slicing()
+            self.pipes.append(pipe)
         
-    print(f"✅ Loaded {len(pipes)} pipeline(s) on device '{device}'")
-    return pipes, device
+        self.executor = ThreadPoolExecutor(max_workers=len(self.pipes))
+        print(f"✅ Ready.")
 
-# Load the models when the application starts
-PIPES, DEVICE = load_pipelines(num_instances=2) # Load 2 instances by default if GPU allows
+manager = ModelManager()
 
-# --- FastAPI App Initialization ---
-
+# --- FastAPI Setup ---
 app = FastAPI(title=APP_TITLE)
 
-# IMPORTANT: Add CORS middleware to allow requests from your React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # The address of your React app
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount the 'outputs' directory so we can serve images directly
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 app.mount("/images", StaticFiles(directory=OUTPUT_DIR), name="images")
 
-# --- Helper Functions (Adapted from your script) ---
-
-def _png_bytes_with_meta(img: Image.Image, meta_dict: dict) -> bytes:
-    buf = io.BytesIO()
-    pnginfo = PngInfo()
-    for k, v in meta_dict.items():
-        pnginfo.add_text(str(k), str(v))
-    img.save(buf, format="PNG", pnginfo=pnginfo)
-    return buf.getvalue()
-
-def _run_pipe(pipe, prompt, negative_prompt, steps, guidance, width, height, count, seed_offset, base_seed, device):
-    # This logic is copied directly from your epic_updated_patched.py
-    gens = [torch.Generator(device=device).manual_seed(base_seed + seed_offset + i) for i in range(count)]
-    with torch.inference_mode():
-        out = pipe(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            num_inference_steps=steps,
-            guidance_scale=guidance,
-            width=width,
-            height=height,
-            num_images_per_prompt=count,
-            generator=gens,
-        )
-    return out.images
-
-# --- API Data Models (using Pydantic) ---
-
+# --- Schemas ---
 class GenerationRequest(BaseModel):
     prompt: str
     negative_prompt: str = DEFAULT_NEG
-    steps: int = 28
-    guidance: float = 6.5
+    steps: int = Field(default=25, ge=1, le=100)
+    guidance: float = Field(default=7.0, ge=1.0, le=20.0)
     width: int = 512
     height: int = 512
-    batch_size: int = 2
+    batch_size: int = Field(default=1, ge=1, le=8)
     seed: Optional[int] = None
 
-# --- API Endpoints ---
+# --- Core Logic ---
+def save_image_with_metadata(img, meta, run_dir):
+    pnginfo = PngInfo()
+    for k, v in meta.items():
+        pnginfo.add_text(str(k), str(v))
+    
+    file_path = os.path.join(run_dir, meta["file"])
+    img.save(file_path, format="PNG", pnginfo=pnginfo)
+    return file_path
 
-@app.get("/")
-def read_root():
-    return {"status": "API is running", "model_id": MODEL_ID}
+def sync_generate(pipe, req_dict, count, offset, base_seed):
+    """Synchronous generation function to be run in a thread."""
+    generators = [
+        torch.Generator(device=manager.device).manual_seed(base_seed + offset + i) 
+        for i in range(count)
+    ]
+    
+    with torch.inference_mode():
+        output = pipe(
+            prompt=req_dict['prompt'],
+            negative_prompt=req_dict['negative_prompt'],
+            num_inference_steps=req_dict['steps'],
+            guidance_scale=req_dict['guidance'],
+            width=req_dict['width'],
+            height=req_dict['height'],
+            num_images_per_prompt=count,
+            generator=generators,
+        )
+    return output.images
+
+# --- Endpoints ---
+@app.on_event("startup")
+async def startup_event():
+    # Load 1 instance by default to save VRAM, increase if your GPU is beefy
+    manager.load_models(num_instances=1)
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "online",
+        "device": manager.device,
+        "instances": len(manager.pipes),
+        "vram_allocated": f"{torch.cuda.memory_allocated() / 1024**2:.2f} MB" if manager.device == "cuda" else "N/A"
+    }
 
 @app.post("/generate")
-async def generate_images(req: GenerationRequest):
-    """The main endpoint to generate images."""
+async def generate(req: GenerationRequest):
     base_seed = req.seed if req.seed is not None else torch.randint(0, 2**31 - 1, (1,)).item()
     
-    # Parallel generation logic from your script
-    n = len(PIPES)
+    # Split work across pipelines
+    n = len(manager.pipes)
     counts = [req.batch_size // n + (1 if i < (req.batch_size % n) else 0) for i in range(n)]
     offsets = [sum(counts[:i]) for i in range(n)]
     
-    images_all = []
-    with ThreadPoolExecutor(max_workers=n) as ex:
-        futs = [ex.submit(_run_pipe, pipe, req.prompt, req.negative_prompt, req.steps, req.guidance,
-                         req.width, req.height, count, offset, base_seed, DEVICE)
-                for pipe, count, offset in zip(PIPES, counts, offsets) if count > 0]
-        for f in as_completed(futs):
-            images_all.extend(f.result())
+    try:
+        loop = asyncio.get_event_loop()
+        tasks = []
+        for i, pipe in enumerate(manager.pipes):
+            if counts[i] > 0:
+                tasks.append(loop.run_in_executor(
+                    manager.executor, sync_generate, pipe, req.dict(), counts[i], offsets[i], base_seed
+                ))
+        
+        results = await asyncio.gather(*tasks)
+        all_images = [img for sublist in results for img in sublist]
 
-    # --- Save files and create response ---
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_folder_name = f"run_{ts}"
-    run_dir = os.path.join(OUTPUT_DIR, run_folder_name)
-    os.makedirs(run_dir, exist_ok=True)
-    manifest_path = os.path.join(run_dir, "manifest.jsonl")
+        # Saving process
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_folder = f"run_{ts}_{base_seed}"
+        run_dir = os.path.join(OUTPUT_DIR, run_folder)
+        os.makedirs(run_dir, exist_ok=True)
+        
+        response_data = []
+        manifest_path = os.path.join(run_dir, "manifest.jsonl")
 
-    response_files = []
-    with open(manifest_path, "w", encoding="utf-8") as mf:
-        for i, img in enumerate(images_all):
-            seed_used = base_seed + i
-            meta = {
-                "file": f"image_{i+1:02d}.png",
-                "prompt": req.prompt,
-                "negative_prompt": req.negative_prompt,
-                "steps": req.steps, "cfg": req.guidance, "size": f"{req.width}x{req.height}",
-                "seed": seed_used, "model": MODEL_ID, "timestamp": ts
-            }
-            
-            # Save to disk
-            png_bytes = _png_bytes_with_meta(img, meta)
-            with open(os.path.join(run_dir, meta["file"]), "wb") as f:
-                f.write(png_bytes)
-            
-            # Write to manifest
-            mf.write(json.dumps(meta) + "\n")
-            
-            # Add file info to the API response
-            response_files.append({
-                "url": f"/images/{run_folder_name}/{meta['file']}",
-                "seed": seed_used,
-                "metadata": meta,
-            })
-            
-    return {"base_seed": base_seed, "images": response_files, "run_folder": run_folder_name}
+        with open(manifest_path, "a") as f:
+            for i, img in enumerate(all_images):
+                meta = {
+                    "file": f"image_{i}.png",
+                    "seed": base_seed + i,
+                    "prompt": req.prompt,
+                    "params": req.dict(),
+                    "timestamp": ts
+                }
+                save_image_with_metadata(img, meta, run_dir)
+                f.write(json.dumps(meta) + "\n")
+                
+                response_data.append({
+                    "url": f"/images/{run_folder}/{meta['file']}",
+                    "seed": meta["seed"]
+                })
 
+        return {"status": "success", "images": response_data, "folder": run_folder}
+
+    except Exception as e:
+        if "out of memory" in str(e).lower():
+            torch.cuda.empty_cache()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/gallery")
-async def get_gallery_data():
-    """Replicates the logic from 1_Past_Images.py to find all images."""
-    run_dirs = sorted(glob.glob(os.path.join(OUTPUT_DIR, "run_*")), key=os.path.getmtime, reverse=True)
+async def get_gallery():
+    """Optimized gallery fetcher."""
+    all_records = []
+    # Find all manifest files
+    manifests = glob.glob(os.path.join(OUTPUT_DIR, "**/manifest.jsonl"), recursive=True)
     
-    records = []
-    for run_dir in run_dirs:
-        run_folder_name = os.path.basename(run_dir)
-        manifest = os.path.join(run_dir, "manifest.jsonl")
-        if os.path.isfile(manifest):
-            with open(manifest, "r", encoding="utf-8") as mf:
-                for line in mf:
-                    try:
-                        rec = json.loads(line)
-                        # Add the public URL to the record
-                        rec['url'] = f"/images/{run_folder_name}/{rec['file']}"
-                        records.append(rec)
-                    except json.JSONDecodeError:
-                        continue # Skip malformed lines
-    return records
+    for manifest in manifests:
+        folder = os.path.basename(os.path.dirname(manifest))
+        with open(manifest, "r") as f:
+            for line in f:
+                data = json.loads(line)
+                data["url"] = f"/images/{folder}/{data['file']}"
+                all_records.append(data)
+                
+    return sorted(all_records, key=lambda x: x.get("timestamp", ""), reverse=True)
