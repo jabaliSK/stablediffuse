@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Info, ExternalLink } from 'lucide-react';
 import { ImageMeta } from '../services/api';
 
 interface CarouselProps {
@@ -53,7 +53,7 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black flex items-center justify-center"
+      className="fixed inset-0 z-50 bg-black flex items-center justify-center touch-none"
     >
       {/* Top Bar */}
       <div className="absolute top-0 inset-x-0 p-4 flex items-center justify-between z-50 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
@@ -61,15 +61,27 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
           {imageIndex + 1} / {images.length}
         </div>
         <div className="flex items-center gap-4 pointer-events-auto">
+          {/* NEW: Open in new tab button */}
+          <a 
+            href={currentImage.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-2 bg-white/10 hover:bg-white/20 text-zinc-300 rounded-full transition-colors flex items-center justify-center min-w-[44px] min-h-[44px]"
+            title="Open original image"
+          >
+            <ExternalLink className="w-5 h-5" />
+          </a>
+          
           <button 
             onClick={() => setShowInfo(!showInfo)}
-            className={`p-2 rounded-full transition-colors ${showInfo ? 'bg-white/20 text-white' : 'bg-white/10 text-zinc-300 hover:bg-white/20'}`}
+            className={`p-2 rounded-full transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center ${showInfo ? 'bg-white/20 text-white' : 'bg-white/10 text-zinc-300 hover:bg-white/20'}`}
           >
             <Info className="w-5 h-5" />
           </button>
+          
           <button 
             onClick={onClose}
-            className="p-2 bg-white/10 hover:bg-white/20 text-zinc-300 rounded-full transition-colors"
+            className="p-2 bg-white/10 hover:bg-white/20 text-zinc-300 rounded-full transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             <X className="w-5 h-5" />
           </button>
@@ -78,7 +90,7 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
 
       {/* Image Container */}
       <div 
-        className="relative w-full h-full flex items-center justify-center overflow-hidden"
+        className="relative w-full h-full flex items-center justify-center overflow-hidden touch-none"
         onClick={handleTap}
       >
         <AnimatePresence initial={false} custom={direction}>
@@ -131,8 +143,8 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
             }}
             className={`absolute max-w-full max-h-full object-contain ${isZoomed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
             alt={currentImage.prompt}
-            onClick={(e) => e.stopPropagation()} // Prevent double tap on container when dragging
-            onPointerDown={handleTap} // Use pointer down for better touch response on the image itself
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={handleTap} 
           />
         </AnimatePresence>
       </div>
@@ -160,7 +172,7 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black via-black/80 to-transparent z-40 pointer-events-none"
+            className="absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black via-black/80 to-transparent z-40 pointer-events-none pb-12 md:pb-6"
           >
             <div className="max-w-xl mx-auto space-y-3 pointer-events-auto">
               <p className="text-white text-sm leading-relaxed">

@@ -50,7 +50,7 @@ export default function GeneratePage() {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="A photorealistic portrait of..."
-            className="w-full bg-zinc-900/50 border border-white/10 rounded-2xl p-4 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none h-32"
+            className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-2xl p-4 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none h-32"
             required
           />
         </div>
@@ -61,7 +61,7 @@ export default function GeneratePage() {
           <textarea
             value={negativePrompt}
             onChange={(e) => setNegativePrompt(e.target.value)}
-            className="w-full bg-zinc-900/50 border border-white/10 rounded-2xl p-4 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none h-20"
+            className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-2xl p-4 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none h-20"
           />
         </div>
 
@@ -73,28 +73,34 @@ export default function GeneratePage() {
               type="number"
               min="1"
               max="4"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={batchSize}
               onChange={(e) => setBatchSize(parseInt(e.target.value) || 1)}
-              className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+              className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
             />
           </div>
           <div className="space-y-2">
             <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Seed</label>
             <input
               type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={seed}
               onChange={(e) => setSeed(e.target.value)}
               placeholder="Random"
-              className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+              className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
             />
           </div>
           <div className="space-y-2">
             <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Steps</label>
             <input
               type="number"
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={steps}
               onChange={(e) => setSteps(parseInt(e.target.value) || 28)}
-              className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+              className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
             />
           </div>
           <div className="space-y-2">
@@ -102,9 +108,10 @@ export default function GeneratePage() {
             <input
               type="number"
               step="0.1"
+              inputMode="decimal"
               value={guidance}
               onChange={(e) => setGuidance(parseFloat(e.target.value) || 6.5)}
-              className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+              className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
             />
           </div>
         </div>
@@ -113,7 +120,7 @@ export default function GeneratePage() {
         <button
           type="submit"
           disabled={loading || !prompt.trim()}
-          className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-sm font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+          className="w-full min-h-[56px] bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
         >
           {loading ? (
             <>
