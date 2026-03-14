@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Image as ImageIcon, Grid, Settings } from 'lucide-react';
 import GeneratePage from './pages/GeneratePage';
 import GalleryPage from './pages/GalleryPage';
-import SettingsModal from './components/SettingsModal';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'generate' | 'gallery'>('generate');
@@ -79,8 +78,6 @@ export default function App() {
           <span className="text-[10px] font-medium uppercase tracking-wider">Gallery</span>
         </button>
       </nav>
-
-      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }
