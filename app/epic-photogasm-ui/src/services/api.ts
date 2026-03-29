@@ -22,7 +22,10 @@ export const generateImages = async (params: any): Promise<ImageMeta[]> => {
   return data.images.map((img: any) => ({
     ...img,
     id: img.id || Math.random().toString(36).substring(7),
-    url: img.url.startsWith('http') ? img.url : `${API_URL}${img.url}`
+    url: img.url.startsWith('http') ? img.url : `${API_URL}${img.url}`,
+    prompt: params.prompt,
+    steps: params.steps,
+    cfg: params.guidance
   }));
 };
 
@@ -34,6 +37,9 @@ export const fetchGallery = async (): Promise<ImageMeta[]> => {
   return data.map((img: any) => ({
     ...img,
     id: img.id || Math.random().toString(36).substring(7),
-    url: img.url.startsWith('http') ? img.url : `${API_URL}${img.url}`
+    url: img.url.startsWith('http') ? img.url : `${API_URL}${img.url}`,
+    steps: img.params?.steps || img.steps || 28,
+    cfg: img.params?.guidance || img.cfg || img.guidance || 6.5,
+    prompt: img.prompt || img.params?.prompt || ''
   }));
 };
