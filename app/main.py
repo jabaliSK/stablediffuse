@@ -13,70 +13,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from diffusers import StableDiffusionXLPipeline, EulerAncestralDiscreteScheduler
+from diffusers import StableDiffusionPipeline, EulerAncestralDiscreteScheduler
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 # --- Configuration ---
-APP_TITLE = "Lustify SDXL API"
+APP_TITLE = "epiCPhotoGasm API"
 OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Civitai Download Config
-# Get your API key at https://civitai.com/user/account (Settings > API Keys)
-CIVITAI_API_KEY = os.environ.get("CIVITAI_API_KEY", "YOUR_API_KEY_HERE") 
-# Replace with the exact download URL from Civitai (Right-click "Download" -> Copy Link Address)
-MODEL_DOWNLOAD_URL = "https://civitai.com/api/download/models/2155386?type=Model&format=SafeTensor&size=pruned&fp=fp16" 
-MODEL_PATH = "models/lustify_sdxl.safetensors"
+MODEL_ID = "Yntec/epiCPhotoGasm"
 
 DEFAULT_NEG = "blurry, low-res, overexposed, extra fingers, deformed, text, watermark, logo"
 
 # --- Global State ---
 GALLERY_CACHE = []
 CACHE_INITIALIZED = False
-
-# --- Download Logic ---
-def ensure_model_exists():
-    """Checks if the model exists, and uses aria2c to download it rapidly if it doesn't."""
-    if os.path.exists(MODEL_PATH):
-        return # Model is already here, skip download
-
-    print(f"⚠️ Model not found locally. Starting multi-threaded download via aria2c...")
-    
-    if not CIVITAI_API_KEY or CIVITAI_API_KEY == "YOUR_API_KEY_HERE":
-        raise ValueError("Cannot download model: CIVITAI_API_KEY is missing. Please generate one in your Civitai account settings or set the environment variable.")
-
-    if not shutil.which("aria2c"):
-        raise FileNotFoundError(
-            "aria2c is not installed or not in your system PATH. "
-            "Please install it (e.g., 'sudo apt install aria2' on Linux or 'winget install aria2' on Windows)."
-        )
-
-    os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-    
-    cmd = [
-        "aria2c",
-        "--console-log-level=warn",
-        "--summary-interval=5",
-        "-x", "16",
-        "-s", "16",
-        "-j", "16",
-        "--auto-file-renaming=false",
-        f"--header=Authorization: Bearer {CIVITAI_API_KEY}",
-        "-d", os.path.dirname(MODEL_PATH),
-        "-o", os.path.basename(MODEL_PATH),
-        MODEL_DOWNLOAD_URL
-    ]
-    
-    try:
-        subprocess.run(cmd, check=True)
-        print("✅ Download complete! Proceeding to load the model...")
-    except subprocess.CalledProcessError as e:
-        if os.path.exists(MODEL_PATH):
-            os.remove(MODEL_PATH)
-        if os.path.exists(MODEL_PATH + ".aria2"):
-            os.remove(MODEL_PATH + ".aria2")
-        raise Exception(f"aria2c download failed with error code {e.returncode}.")
 
 # --- Model Management ---
 class ModelManager:
@@ -86,14 +38,11 @@ class ModelManager:
         self.dtype = torch.float16 if self.device == "cuda" else torch.float32
 
     def load_model(self):
-        # 1. Download the model if it's missing
-        ensure_model_exists()
+        print(f"🚀 Loading SD model {MODEL_ID} on {self.device}...")
         
-        print(f"🚀 Loading SDXL model on {self.device}...")
-        
-        # 2. Load the pipeline from the single safetensors file
-        pipe = StableDiffusionXLPipeline.from_single_file(
-            MODEL_PATH,
+        # 1. Load the pipeline from HuggingFace
+        pipe = StableDiffusionPipeline.from_pretrained(
+            MODEL_ID,
             torch_dtype=self.dtype,
             use_safetensors=True
         )
@@ -137,8 +86,8 @@ class GenerationRequest(BaseModel):
     negative_prompt: str = DEFAULT_NEG
     steps: int = Field(default=28, ge=1, le=100)
     guidance: float = Field(default=6.5, ge=1.0, le=20.0)
-    width: int = 1024  # SDXL native resolution
-    height: int = 1024 # SDXL native resolution
+    width: int = 512  # SD 1.5 native resolution
+    height: int = 512 # SD 1.5 native resolution
     batch_size: int = Field(default=1, ge=1, le=8) # Configured for 22GB VRAM
     seed: Optional[int] = None
 
@@ -212,8 +161,9 @@ async def generate(req: GenerationRequest, background_tasks: BackgroundTasks):
     
     try:
         loop = asyncio.get_event_loop()
+        req_dict = req.model_dump() if hasattr(req, "model_dump") else req.dict()
         images = await loop.run_in_executor(
-            None, generate_images_sync, req.dict(), base_seed
+            None, generate_images_sync, req_dict, base_seed
         )
 
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -230,7 +180,7 @@ async def generate(req: GenerationRequest, background_tasks: BackgroundTasks):
 
         background_tasks.add_task(
             save_and_cache_background, 
-            images, req.dict(), base_seed, ts, run_dir, run_folder
+            images, req_dict, base_seed, ts, run_dir, run_folder
         )
 
         return {"status": "success", "images": response_data, "folder": run_folder}
