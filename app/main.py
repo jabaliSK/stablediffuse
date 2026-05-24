@@ -22,7 +22,7 @@ APP_TITLE = "epiCPhotoGasm API"
 OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-MODEL_ID = "Yntec/epiCPhotoGasm"
+MODEL_ID = "runwayml/stable-diffusion-v1-5"
 
 DEFAULT_NEG = "blurry, low-res, overexposed, extra fingers, deformed, text, watermark, logo"
 
