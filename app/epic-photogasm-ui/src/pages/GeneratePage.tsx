@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Wand2, Loader2 } from 'lucide-react';
+import { Wand2, Loader2, Square } from 'lucide-react';
 import { generateImages, ImageMeta } from '../services/api';
 
 export default function GeneratePage() {
@@ -10,34 +10,51 @@ export default function GeneratePage() {
   const [steps, setSteps] = useState(28);
   const [guidance, setGuidance] = useState(6.5);
   const [seed, setSeed] = useState('');
+  const [continuous, setContinuous] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<ImageMeta[]>([]);
+  
+  const stopRequested = useRef(false);
+  const continuousRef = useRef(continuous);
 
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    continuousRef.current = continuous;
+  }, [continuous]);
+
+  const handleGenerate = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!prompt.trim()) return;
     
     setLoading(true);
     setError(null);
-    setResults([]);
+    stopRequested.current = false;
     
     try {
-      const images = await generateImages({
-        prompt,
-        negative_prompt: negativePrompt,
-        batch_size: batchSize,
-        steps,
-        guidance,
-        seed: seed ? parseInt(seed, 10) : undefined
-      });
-      setResults(images);
+      do {
+        const images = await generateImages({
+          prompt,
+          negative_prompt: negativePrompt,
+          batch_size: batchSize,
+          steps,
+          guidance,
+          seed: seed ? parseInt(seed, 10) : undefined
+        });
+        setResults(prev => [...images, ...prev]);
+        
+        if (!continuousRef.current || stopRequested.current) break;
+      } while (true);
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStop = () => {
+    stopRequested.current = true;
+    setContinuous(false);
   };
 
   return (
@@ -72,7 +89,7 @@ export default function GeneratePage() {
             <input
               type="number"
               min="1"
-              max="4"
+              max="16"
               inputMode="numeric"
               pattern="[0-9]*"
               value={batchSize}
@@ -116,24 +133,55 @@ export default function GeneratePage() {
           </div>
         </div>
 
+        {/* Continuous Generation Checkbox */}
+        <label className="flex items-center gap-3 p-3 bg-zinc-900/30 border border-white/5 rounded-xl cursor-pointer hover:bg-zinc-900/50 transition-colors">
+          <div className="relative flex items-center justify-center">
+            <input
+              type="checkbox"
+              checked={continuous}
+              onChange={(e) => setContinuous(e.target.checked)}
+              className="peer sr-only"
+            />
+            <div className="w-5 h-5 border-2 border-zinc-500 rounded flex items-center justify-center peer-checked:border-indigo-500 peer-checked:bg-indigo-500 transition-all">
+              <motion.div
+                initial={false}
+                animate={{ scale: continuous ? 1 : 0 }}
+                className="w-2.5 h-2.5 bg-white rounded-sm"
+              />
+            </div>
+          </div>
+          <span className="text-sm font-medium text-zinc-300">Continuous Generation</span>
+        </label>
+
         {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={loading || !prompt.trim()}
-          className="w-full min-h-[56px] bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Wand2 className="w-5 h-5" />
-              Generate
-            </>
-          )}
-        </button>
+        {loading && continuous ? (
+          <button
+            type="button"
+            onClick={handleStop}
+            className="w-full min-h-[56px] bg-red-500/20 hover:bg-red-500/30 text-red-500 border border-red-500/50 rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+          >
+            <Square className="w-4 h-4 fill-current" />
+            Stop Generation
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={loading || !prompt.trim()}
+            className="w-full min-h-[56px] bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Wand2 className="w-5 h-5" />
+                Generate
+              </>
+            )}
+          </button>
+        )}
       </form>
 
       {error && (
