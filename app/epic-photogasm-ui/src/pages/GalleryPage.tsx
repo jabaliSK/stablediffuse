@@ -24,10 +24,12 @@ export default function GalleryPage() {
 
   // Initial load & polling
   useEffect(() => {
-    loadGallery();
-    const interval = setInterval(loadGallery, 5000); // Poll every 5s
-    return () => clearInterval(interval);
-  }, []);
+    if (selectedIndex === null) {
+      loadGallery();
+      const interval = setInterval(loadGallery, 5000); // Poll every 5s
+      return () => clearInterval(interval);
+    }
+  }, [selectedIndex]);
 
   if (loading && images.length === 0) {
     return (

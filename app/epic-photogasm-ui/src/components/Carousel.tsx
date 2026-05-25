@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, ChevronLeft, ChevronRight, Info, ExternalLink } from 'lucide-react';
 import { ImageMeta } from '../services/api';
@@ -19,6 +19,7 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
   const [showInfo, setShowInfo] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
   const [lastTap, setLastTap] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Wrap around index
   const imageIndex = ((page % images.length) + images.length) % images.length;
@@ -41,7 +42,7 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
   const handleTap = () => {
     const now = Date.now();
     if (now - lastTap < 300) {
-      setIsZoomed(!isZoomed);
+      setIsZoomed(prev => !prev);
     }
     setLastTap(now);
   };
@@ -90,6 +91,7 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
 
       {/* Image Container */}
       <div 
+        ref={containerRef}
         className="relative w-full h-full flex items-center justify-center overflow-hidden touch-none"
         onClick={handleTap}
       >
@@ -129,9 +131,9 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
               opacity: { duration: 0.2 },
               scale: { type: "spring", stiffness: 300, damping: 30 }
             }}
-            drag={isZoomed ? true : "x"}
-            dragConstraints={isZoomed ? { left: -500, right: 500, top: -500, bottom: 500 } : { left: 0, right: 0 }}
-            dragElastic={isZoomed ? 0.2 : 1}
+            drag={true}
+            dragConstraints={isZoomed ? containerRef : { left: 0, right: 0, top: 0, bottom: 0 }}
+            dragElastic={isZoomed ? 0.2 : { x: 1, y: 0 }}
             onDragEnd={(e, { offset, velocity }) => {
               if (isZoomed) return;
               const swipe = swipePower(offset.x, velocity.x);

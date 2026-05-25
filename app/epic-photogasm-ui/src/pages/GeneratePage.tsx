@@ -6,10 +6,9 @@ import { generateImages, ImageMeta } from '../services/api';
 export default function GeneratePage() {
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('blurry, low-res, text, watermark');
-  const [batchSize, setBatchSize] = useState(1);
-  const [steps, setSteps] = useState(28);
-  const [guidance, setGuidance] = useState(6.5);
+  const [batchSize, setBatchSize] = useState<number | ''>(1);
   const [seed, setSeed] = useState('');
+  const [resolution, setResolution] = useState('512x896');
   const [continuous, setContinuous] = useState(false);
   
   const [loading, setLoading] = useState(false);
@@ -27,18 +26,29 @@ export default function GeneratePage() {
     if (e) e.preventDefault();
     if (!prompt.trim()) return;
     
+    if (batchSize === '' || batchSize < 1) {
+      setError('Please enter a valid number of images.');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     stopRequested.current = false;
     
     try {
+      const [widthStr, heightStr] = resolution.split('x');
+      const width = parseInt(widthStr, 10);
+      const height = parseInt(heightStr, 10);
+
       do {
         const images = await generateImages({
           prompt,
           negative_prompt: negativePrompt,
           batch_size: batchSize,
-          steps,
-          guidance,
+          steps: 28,
+          guidance: 6.5,
+          width,
+          height,
           seed: seed ? parseInt(seed, 10) : undefined
         });
         setResults(prev => [...images, ...prev]);
@@ -93,7 +103,14 @@ export default function GeneratePage() {
               inputMode="numeric"
               pattern="[0-9]*"
               value={batchSize}
-              onChange={(e) => setBatchSize(parseInt(e.target.value) || 1)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '') setBatchSize('');
+                else {
+                  const num = parseInt(val, 10);
+                  if (!isNaN(num)) setBatchSize(num);
+                }
+              }}
               className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
             />
           </div>
@@ -109,27 +126,18 @@ export default function GeneratePage() {
               className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
             />
           </div>
-          <div className="space-y-2">
-            <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Steps</label>
-            <input
-              type="number"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={steps}
-              onChange={(e) => setSteps(parseInt(e.target.value) || 28)}
-              className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Guidance</label>
-            <input
-              type="number"
-              step="0.1"
-              inputMode="decimal"
-              value={guidance}
-              onChange={(e) => setGuidance(parseFloat(e.target.value) || 6.5)}
-              className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
-            />
+          <div className="space-y-2 col-span-2">
+            <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Resolution</label>
+            <select
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value)}
+              className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all [&>option]:bg-zinc-900"
+            >
+              <option value="512x896">512 × 896 (9:16)</option>
+              <option value="768x1344">768 × 1344 (9:16 HD)</option>
+              <option value="768x1024">768 × 1024 (3:4)</option>
+              <option value="512x768">512 × 768 (2:3)</option>
+            </select>
           </div>
         </div>
 
