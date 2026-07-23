@@ -1,19 +1,33 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Wand2, Loader2 } from 'lucide-react';
+import { Wand2, Loader2, Play, Square } from 'lucide-react';
 import { generateImages, ImageMeta } from '../services/api';
 
 export default function GeneratePage() {
   const [prompt, setPrompt] = useState('');
   const [negativePrompt, setNegativePrompt] = useState('blurry, low-res, text, watermark');
-  const [batchSize, setBatchSize] = useState(1);
+  const [batchSize, setBatchSize] = useState<number | string>(1);
   const [steps, setSteps] = useState(28);
   const [guidance, setGuidance] = useState(6.5);
   const [seed, setSeed] = useState('');
   
   const [loading, setLoading] = useState(false);
+  const [isContinuous, setIsContinuous] = useState(false);
+  const stopRef = useRef(false);
+  
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<ImageMeta[]>([]);
+
+  const runGeneration = async () => {
+    return await generateImages({
+      prompt,
+      negative_prompt: negativePrompt,
+      batch_size: typeof batchSize === 'number' ? batchSize : (parseInt(batchSize as string) || 1),
+      steps,
+      guidance,
+      seed: seed ? parseInt(seed, 10) : undefined
+    });
+  };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,20 +38,40 @@ export default function GeneratePage() {
     setResults([]);
     
     try {
-      const images = await generateImages({
-        prompt,
-        negative_prompt: negativePrompt,
-        batch_size: batchSize,
-        steps,
-        guidance,
-        seed: seed ? parseInt(seed, 10) : undefined
-      });
+      const images = await runGeneration();
       setResults(images);
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleContinuous = async () => {
+    if (!prompt.trim()) return;
+    
+    setIsContinuous(true);
+    stopRef.current = false;
+    setLoading(true);
+    setError(null);
+    setResults([]);
+    
+    try {
+      while (!stopRef.current) {
+        const images = await runGeneration();
+        if (stopRef.current) break; // if user clicked stop while generating
+        setResults(prev => [...images, ...prev].slice(0, 20)); // Keep up to 20 recent images
+      }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setLoading(false);
+      setIsContinuous(false);
+    }
+  };
+
+  const handleStop = () => {
+    stopRef.current = true;
   };
 
   return (
@@ -71,12 +105,11 @@ export default function GeneratePage() {
             <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Images</label>
             <input
               type="number"
-              min="1"
-              max="4"
               inputMode="numeric"
               pattern="[0-9]*"
               value={batchSize}
-              onChange={(e) => setBatchSize(parseInt(e.target.value) || 1)}
+              onChange={(e) => setBatchSize(e.target.value === '' ? '' : parseInt(e.target.value))}
+              placeholder="1"
               className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
             />
           </div>
@@ -116,24 +149,41 @@ export default function GeneratePage() {
           </div>
         </div>
 
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={loading || !prompt.trim()}
-          className="w-full min-h-[56px] bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
-        >
-          {loading ? (
+        {/* Submit Buttons */}
+        <div className="space-y-3">
+          {!isContinuous ? (
             <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Generating...
+              <button
+                type="submit"
+                disabled={loading || !prompt.trim()}
+                className="w-full min-h-[56px] bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                {loading ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Generating...</>
+                ) : (
+                  <><Wand2 className="w-5 h-5" /> Generate Once</>
+                )}
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleContinuous}
+                disabled={loading || !prompt.trim()}
+                className="w-full min-h-[56px] bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800/50 disabled:text-zinc-600 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                <Play className="w-5 h-5" /> Continuous Generation
+              </button>
             </>
           ) : (
-            <>
-              <Wand2 className="w-5 h-5" />
-              Generate
-            </>
+            <button
+              type="button"
+              onClick={handleStop}
+              className="w-full min-h-[56px] bg-red-500 hover:bg-red-600 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+            >
+              <Square className="w-5 h-5" /> Stop Generation
+            </button>
           )}
-        </button>
+        </div>
       </form>
 
       {error && (
@@ -152,7 +202,7 @@ export default function GeneratePage() {
                 key={i}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.1 }}
+                transition={{ delay: 0.1 }}
                 className="aspect-square rounded-2xl overflow-hidden bg-zinc-900 border border-white/5 relative group"
               >
                 <img src={img.url} alt="Generated" className="w-full h-full object-cover" />

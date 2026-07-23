@@ -56,8 +56,8 @@ export default function GalleryPage() {
   return (
     <>
       <div className="p-1 pb-24">
-        {/* 3x3 Grid */}
-        <div className="grid grid-cols-3 gap-1">
+        {/* 5x5 Grid */}
+        <div className="grid grid-cols-5 gap-1">
           {images.map((img, index) => (
             <motion.div
               key={img.id || index}

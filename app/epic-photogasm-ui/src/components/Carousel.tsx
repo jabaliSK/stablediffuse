@@ -38,12 +38,15 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [paginate, onClose]);
 
-  const handleTap = () => {
+  const handleTap = (e?: React.PointerEvent | React.MouseEvent) => {
+    if (e) e.stopPropagation();
     const now = Date.now();
     if (now - lastTap < 300) {
       setIsZoomed(!isZoomed);
+      setLastTap(0);
+    } else {
+      setLastTap(now);
     }
-    setLastTap(now);
   };
 
   const currentImage = images[imageIndex];
@@ -149,17 +152,17 @@ export default function Carousel({ images, initialIndex, onClose }: CarouselProp
         </AnimatePresence>
       </div>
 
-      {/* Navigation Buttons (Desktop) */}
-      <div className="hidden md:flex absolute inset-y-0 inset-x-4 items-center justify-between pointer-events-none z-40">
+      {/* Navigation Buttons (Desktop or Zoomed Mobile) */}
+      <div className={`absolute inset-y-0 inset-x-2 items-center justify-between pointer-events-none z-40 ${isZoomed ? 'flex' : 'hidden md:flex'}`}>
         <button 
-          onClick={() => paginate(-1)}
-          className="p-3 bg-black/50 hover:bg-black/80 text-white rounded-full pointer-events-auto backdrop-blur-md transition-all"
+          onClick={(e) => { e.stopPropagation(); paginate(-1); }}
+          className="p-2 bg-black/50 hover:bg-black/80 text-white rounded-full pointer-events-auto backdrop-blur-md transition-all scale-75 md:scale-100 md:p-3"
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
         <button 
-          onClick={() => paginate(1)}
-          className="p-3 bg-black/50 hover:bg-black/80 text-white rounded-full pointer-events-auto backdrop-blur-md transition-all"
+          onClick={(e) => { e.stopPropagation(); paginate(1); }}
+          className="p-2 bg-black/50 hover:bg-black/80 text-white rounded-full pointer-events-auto backdrop-blur-md transition-all scale-75 md:scale-100 md:p-3"
         >
           <ChevronRight className="w-6 h-6" />
         </button>
