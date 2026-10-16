@@ -13,18 +13,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from diffusers import StableDiffusionPipeline, EulerAncestralDiscreteScheduler
+from diffusers import FluxPipeline
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 # --- Configuration ---
-APP_TITLE = "epiCPhotoGasm API"
+APP_TITLE = "FLUX.1 Schnell API"
 OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-MODEL_ID = "Yntec/epiCPhotoGasm"
-
-DEFAULT_NEG = "blurry, low-res, overexposed, extra fingers, deformed, text, watermark, logo"
+MODEL_ID = "black-forest-labs/FLUX.1-schnell"
 
 # --- Global State ---
 GALLERY_CACHE = []
@@ -35,35 +33,38 @@ class ModelManager:
     def __init__(self):
         self.pipe = None
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.dtype = torch.float16 if self.device == "cuda" else torch.float32
+        self.dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
 
     def load_model(self):
-        print(f"🚀 Loading SD model {MODEL_ID} on {self.device}...")
+        print(f"🚀 Loading FLUX model {MODEL_ID} on {self.device}...")
         
-        # 1. Load the pipeline from HuggingFace
-        pipe = StableDiffusionPipeline.from_pretrained(
+        # Load the pipeline from HuggingFace
+        pipe = FluxPipeline.from_pretrained(
             MODEL_ID,
-            torch_dtype=self.dtype,
-            use_safetensors=True
+            torch_dtype=self.dtype
         )
         
-        pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(pipe.scheduler.config)
-        pipe = pipe.to(self.device)
-        
-        # 3. Apply VRAM and Speed Optimizations
         if self.device == "cuda":
-            # Speeds up memory access by reorganizing tensor structure
-            pipe.unet.to(memory_format=torch.channels_last)
+            total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            print(f"Detected GPU with {total_vram_gb:.1f} GB VRAM")
             
-            # Reduces memory footprint during attention calculations
-            try:
-                pipe.enable_xformers_memory_efficient_attention()
-                print("✅ xformers enabled.")
-            except Exception:
-                print("⚠️ xformers not available. Relying on default PyTorch SDPA.")
+            # If less than 24GB, use CPU offload to comfortably run in 12-16GB VRAM
+            if total_vram_gb < 24:
+                pipe.enable_model_cpu_offload()
+                print("✅ Model CPU offload enabled (<24GB VRAM).")
+            else:
+                pipe.to("cuda")
+                print("✅ Model loaded fully into GPU VRAM.")
                 
+            # VAE slicing & tiling to prevent memory spikes on high-resolution latents
+            if hasattr(pipe, "vae") and pipe.vae is not None:
+                pipe.vae.enable_slicing()
+                pipe.vae.enable_tiling()
+        else:
+            pipe.to("cpu")
+            
         self.pipe = pipe
-        print(f"✅ Ready.")
+        print(f"✅ FLUX.1 Ready.")
 
 manager = ModelManager()
 
@@ -83,12 +84,11 @@ app.mount("/images", StaticFiles(directory=OUTPUT_DIR), name="images")
 # --- Schemas ---
 class GenerationRequest(BaseModel):
     prompt: str
-    negative_prompt: str = DEFAULT_NEG
-    steps: int = Field(default=28, ge=1, le=100)
-    guidance: float = Field(default=6.5, ge=1.0, le=20.0)
-    width: int = 512  # SD 1.5 native resolution
-    height: int = 512 # SD 1.5 native resolution
-    batch_size: int = Field(default=1, ge=1, le=8) # Configured for 22GB VRAM
+    steps: int = Field(default=4, ge=1, le=12) # FLUX.1-schnell is distilled for 4 steps
+    guidance: float = Field(default=0.0, ge=0.0, le=10.0) # 0.0 for schnell
+    width: int = Field(default=1024, ge=256, le=2048)
+    height: int = Field(default=1024, ge=256, le=2048)
+    batch_size: int = Field(default=1, ge=1, le=10)
     seed: Optional[int] = None
 
 # --- Core Logic ---
@@ -103,23 +103,29 @@ def save_image_with_metadata(img, meta, run_dir):
 
 def generate_images_sync(req_dict, base_seed):
     """Synchronous generation function offloaded to a thread."""
-    generators = [
-        torch.Generator(device=manager.device).manual_seed(base_seed + i) 
-        for i in range(req_dict['batch_size'])
-    ]
+    # Ensure dimensions are multiples of 16 (required for Flux DiT)
+    width = (req_dict.get('width', 1024) // 16) * 16
+    height = (req_dict.get('height', 1024) // 16) * 16
     
-    with torch.inference_mode():
-        output = manager.pipe(
-            prompt=req_dict['prompt'],
-            negative_prompt=req_dict['negative_prompt'],
-            num_inference_steps=req_dict['steps'],
-            guidance_scale=req_dict['guidance'],
-            width=req_dict['width'],
-            height=req_dict['height'],
-            num_images_per_prompt=req_dict['batch_size'],
-            generator=generators,
-        )
-    return output.images
+    images = []
+    # Generate sequentially to prevent peak VRAM explosion for batch_size > 1
+    for i in range(req_dict.get('batch_size', 1)):
+        current_seed = base_seed + i
+        generator = torch.Generator(device="cpu").manual_seed(current_seed)
+        
+        with torch.inference_mode():
+            output = manager.pipe(
+                prompt=req_dict['prompt'],
+                num_inference_steps=req_dict.get('steps', 4),
+                guidance_scale=req_dict.get('guidance', 0.0),
+                width=width,
+                height=height,
+                max_sequence_length=256,
+                generator=generator,
+            )
+            images.extend(output.images)
+            
+    return images
 
 def save_and_cache_background(images, req_dict, base_seed, ts, run_dir, run_folder):
     """Background task to handle disk I/O and cache updates."""
