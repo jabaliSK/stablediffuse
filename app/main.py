@@ -23,7 +23,7 @@ OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 MODEL_ID = "black-forest-labs/FLUX.1-dev"
-LORA_ID = os.environ.get("LORA_ID", "enhanceaiteam/Flux-Uncensored-V2")
+LORA_ID = os.environ.get("LORA_ID", "kenerateai/Flux-uncensored")
 
 # --- Global State ---
 GALLERY_CACHE = []
@@ -42,17 +42,28 @@ class ModelManager:
         # Load the pipeline from HuggingFace
         pipe = FluxPipeline.from_pretrained(
             MODEL_ID,
-            torch_dtype=self.dtype
+            dtype=self.dtype
         )
         
         # Load the uncensored LoRA
         if LORA_ID:
-            try:
-                print(f"📦 Loading Uncensored LoRA: {LORA_ID}...")
-                pipe.load_lora_weights(LORA_ID, adapter_name="uncensored")
-                print("✅ Uncensored LoRA loaded successfully.")
-            except Exception as e:
-                print(f"⚠️ Could not load LoRA {LORA_ID}: {e}. Proceeding with base model.")
+            loaded = False
+            for lora_spec in [
+                {"repo": LORA_ID, "kwargs": {}},
+                {"repo": "kenerateai/Flux-uncensored", "kwargs": {}},
+                {"repo": "devsquad8338/Flux-Uncensored-V2-bucket", "kwargs": {"weight_name": "lora.safetensors"}},
+            ]:
+                try:
+                    print(f"📦 Loading Uncensored LoRA: {lora_spec['repo']}...")
+                    pipe.load_lora_weights(lora_spec['repo'], adapter_name="uncensored", **lora_spec['kwargs'])
+                    print(f"✅ Uncensored LoRA ({lora_spec['repo']}) loaded successfully.")
+                    loaded = True
+                    break
+                except Exception as e:
+                    print(f"⚠️ Could not load {lora_spec['repo']}: {e}")
+            
+            if not loaded:
+                print("⚠️ No LoRA loaded. Proceeding with base FLUX.1-dev model.")
         
         if self.device == "cuda":
             total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
