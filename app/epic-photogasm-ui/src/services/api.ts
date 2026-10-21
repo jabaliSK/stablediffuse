@@ -16,7 +16,13 @@ export const generateImages = async (params: any): Promise<ImageMeta[]> => {
     body: JSON.stringify(params),
   });
   
-  if (!response.ok) throw new Error('Generation failed');
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const detailMsg = errorData.detail 
+      ? (typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail)) 
+      : `HTTP ${response.status}: Generation failed`;
+    throw new Error(detailMsg);
+  }
   const data = await response.json();
   
   return data.images.map((img: any) => ({

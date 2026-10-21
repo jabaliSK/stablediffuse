@@ -1,20 +1,35 @@
 #!/bin/bash
 set -e
 
-# 1. Clone repository (or pull latest if it already exists)
+# Hugging Face Token (required for FLUX.1 license)
+export HF_TOKEN="xxxxxxxxxxxxxxxx"
+
+# Store downloaded models in /workspace (avoids filling the small /root partition)
+export HF_HOME="/workspace/.cache/huggingface"
+mkdir -p "$HF_HOME"
+
+# Set your target branch (defaults to 'flux', or pass as argument: ./commands.txt <branch>)
+BRANCH="${1:-FLUX}"
+
+# 1. Clone repository on specific branch (or pull latest if it already exists)
 if [ -d "stablediffuse" ]; then
-    echo "Directory stablediffuse exists, updating..."
-    cd stablediffuse && git pull && cd ..
+    echo "Directory stablediffuse exists, updating branch '$BRANCH'..."
+    cd stablediffuse
+    git fetch origin
+    git checkout "$BRANCH"
+    git pull origin "$BRANCH"
+    cd ..
 else
-    git clone https://github.com/jabaliSK/stablediffuse.git
+    echo "Cloning branch '$BRANCH'..."
+    git clone -b "$BRANCH" https://github.com/jabaliSK/stablediffuse.git
 fi
 
 # 2. Fetch Vast.ai instance IP and Host Ports
 IP=$(vastai show instances --raw | jq -r '.[0].public_ipaddr')
 BACKEND_PORT=$(vastai show instances --raw | jq -r '.[0].ports["8080/tcp"][0].HostPort')
 
-# Port your frontend listens on inside the container (3000 by default in Vite, or 8501 if mapped in Vast template)
-UI_PORT=3000
+# Port your frontend listens on inside the container (8501 for your Vast.ai template)
+UI_PORT=8501
 FRONTEND_PORT=$(vastai show instances --raw | jq -r --arg p "${UI_PORT}/tcp" '.[0].ports[$p][0].HostPort // empty')
 
 echo "Instance Public IP: $IP"
@@ -31,9 +46,9 @@ command -v npm >/dev/null 2>&1 || (curl -fsSL https://deb.nodesource.com/setup_2
 # 4. Install frontend dependencies
 npm install
 
-# 5. Install backend Python dependencies (FLUX requires diffusers>=0.30, transformers, sentencepiece)
+# 5. Install backend Python dependencies (FLUX requires diffusers>=0.30, transformers, peft for LoRA)
 cd ../..
-pip install "fastapi[all]" uvicorn "diffusers>=0.30.0" "transformers>=4.43.0" accelerate sentencepiece protobuf Pillow
+pip install "fastapi[all]" uvicorn "diffusers>=0.30.0" "transformers>=4.43.0" peft accelerate sentencepiece protobuf Pillow
 python3 -c "import torch; assert torch.cuda.is_available()" 2>/dev/null || pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 # 6. Start backend without --reload (reload triggers crash/restart when images are saved into outputs/)
@@ -47,3 +62,4 @@ echo "Frontend started (logs: frontend.log)"
 
 echo "=== Setup complete! ==="
 echo "Open in your browser: http://$IP:$FRONTEND_PORT"
+tail -f stablediffuse/backend.log
