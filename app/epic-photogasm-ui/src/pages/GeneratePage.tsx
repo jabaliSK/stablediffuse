@@ -14,9 +14,8 @@ export default function GeneratePage() {
   const [prompt, setPrompt] = useState('');
   const [batchSize, setBatchSize] = useState<number | string>(1);
   const [aspectIndex, setAspectIndex] = useState(0); // Default to Full Body 9:16
-  const [steps, setSteps] = useState(25); // FLUX.1-dev standard is 20-30 steps
-  const [guidance, setGuidance] = useState(3.5); // FLUX.1-dev guidance scale
-  const [loraScale, setLoraScale] = useState(1.0); // Uncensored LoRA weight
+  const [steps, setSteps] = useState(4); // FLUX.1-schnell is distilled for 4 steps
+  const [guidance, setGuidance] = useState(0.0);
   const [seed, setSeed] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   
@@ -37,7 +36,6 @@ export default function GeneratePage() {
       batch_size: typeof batchSize === 'number' ? batchSize : (parseInt(batchSize as string) || 1),
       steps,
       guidance,
-      lora_scale: loraScale,
       seed: seed ? parseInt(seed, 10) : undefined
     });
   };
@@ -94,12 +92,12 @@ export default function GeneratePage() {
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Prompt</label>
-            <span className="text-[10px] text-indigo-400 font-medium">FLUX.1 Dev + Uncensored</span>
+            <span className="text-[10px] text-indigo-400 font-medium">FLUX.1 Schnell (4 steps)</span>
           </div>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Full-length candid photo of an athletic woman in a dynamic pose, intricate fashion garments, realistic skin pores, natural ambient lighting, 8k..."
+            placeholder="Full-length candid photo of a woman in an athletic pose, detailed facial features, realistic skin texture, natural lighting, 8k..."
             className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-2xl p-4 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none h-32"
             required
           />
@@ -170,60 +168,27 @@ export default function GeneratePage() {
           </button>
           
           {showAdvanced && (
-            <div className="p-4 pt-2 space-y-4 border-t border-white/5 mt-2">
-              {/* Uncensored LoRA Slider */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <label className="text-[11px] font-medium text-zinc-300">Uncensored LoRA Strength</label>
-                  <span className="text-xs font-mono text-indigo-400 font-semibold">{loraScale.toFixed(2)}x</span>
-                </div>
+            <div className="p-4 pt-0 grid grid-cols-2 gap-4 border-t border-white/5 mt-2">
+              <div className="space-y-2 mt-2">
+                <label className="block text-[11px] font-medium text-zinc-400">Steps (Default: 4)</label>
                 <input
-                  type="range"
-                  min="0.0"
-                  max="1.5"
-                  step="0.05"
-                  value={loraScale}
-                  onChange={(e) => setLoraScale(parseFloat(e.target.value))}
-                  className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-zinc-800 rounded-lg"
+                  type="number"
+                  min="1"
+                  max="12"
+                  value={steps}
+                  onChange={(e) => setSteps(parseInt(e.target.value) || 4)}
+                  className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-2.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 />
-                <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
-                  <span>0.0 (Off / Base)</span>
-                  <span>1.0 (Full Uncensored)</span>
-                  <span>1.5 (High)</span>
-                </div>
               </div>
-
-              {/* Steps and Guidance Grid */}
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[11px] font-medium text-zinc-400">Steps</label>
-                    <span className="text-[10px] text-zinc-500">20-30</span>
-                  </div>
-                  <input
-                    type="number"
-                    min="10"
-                    max="50"
-                    value={steps}
-                    onChange={(e) => setSteps(parseInt(e.target.value) || 25)}
-                    className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-2.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[11px] font-medium text-zinc-400">Guidance (CFG)</label>
-                    <span className="text-[10px] text-zinc-500">3.5</span>
-                  </div>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="1.0"
-                    max="10.0"
-                    value={guidance}
-                    onChange={(e) => setGuidance(parseFloat(e.target.value) || 3.5)}
-                    className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-2.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                </div>
+              <div className="space-y-2 mt-2">
+                <label className="block text-[11px] font-medium text-zinc-400">Guidance Scale</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={guidance}
+                  onChange={(e) => setGuidance(parseFloat(e.target.value) || 0.0)}
+                  className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-2.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
               </div>
             </div>
           )}
