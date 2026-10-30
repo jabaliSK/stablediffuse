@@ -24,12 +24,11 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
 # --- Configuration ---
-APP_TITLE = "FLUX.1 Dev Uncensored API"
+APP_TITLE = "FLUX.1 Dev API"
 OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 MODEL_ID = "black-forest-labs/FLUX.1-dev"
-LORA_ID = os.environ.get("LORA_ID", "kenerateai/Flux-uncensored")
 
 # --- Global State ---
 GALLERY_CACHE = []
@@ -50,26 +49,6 @@ class ModelManager:
             MODEL_ID,
             dtype=self.dtype
         )
-        
-        # Load the uncensored LoRA
-        if LORA_ID:
-            loaded = False
-            for lora_spec in [
-                {"repo": LORA_ID, "kwargs": {}},
-                {"repo": "kenerateai/Flux-uncensored", "kwargs": {}},
-                {"repo": "devsquad8338/Flux-Uncensored-V2-bucket", "kwargs": {"weight_name": "lora.safetensors"}},
-            ]:
-                try:
-                    print(f"📦 Loading Uncensored LoRA: {lora_spec['repo']}...")
-                    pipe.load_lora_weights(lora_spec['repo'], adapter_name="uncensored", **lora_spec['kwargs'])
-                    print(f"✅ Uncensored LoRA ({lora_spec['repo']}) loaded successfully.")
-                    loaded = True
-                    break
-                except Exception as e:
-                    print(f"⚠️ Could not load {lora_spec['repo']}: {e}")
-            
-            if not loaded:
-                print("⚠️ No LoRA loaded. Proceeding with base FLUX.1-dev model.")
         
         if self.device == "cuda":
             total_vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
@@ -116,7 +95,6 @@ class GenerationRequest(BaseModel):
     width: Optional[int] = 1024
     height: Optional[int] = 1024
     batch_size: Optional[int] = 1
-    lora_scale: Optional[float] = 1.0
     seed: Optional[int] = None
     negative_prompt: Optional[str] = None
 
@@ -142,7 +120,6 @@ def generate_and_save_sync(req_dict, base_seed, ts, run_dir, run_folder):
     height = (int(req_dict.get('height') or 1024) // 16) * 16
     steps = int(req_dict.get('steps') or 25)
     guidance = float(req_dict.get('guidance') if req_dict.get('guidance') is not None else 3.5)
-    lora_scale = float(req_dict.get('lora_scale') if req_dict.get('lora_scale') is not None else 1.0)
     batch_size = max(1, int(req_dict.get('batch_size') or 1))
     
     response_data = []
@@ -154,21 +131,15 @@ def generate_and_save_sync(req_dict, base_seed, ts, run_dir, run_folder):
             generator = torch.Generator(device="cpu").manual_seed(current_seed)
             
             with torch.inference_mode():
-                call_kwargs = {
-                    "prompt": req_dict['prompt'],
-                    "num_inference_steps": steps,
-                    "guidance_scale": guidance,
-                    "width": width,
-                    "height": height,
-                    "max_sequence_length": 512, # 512 for FLUX.1-dev
-                    "generator": generator,
-                }
-                
-                # Apply LoRA scale if adapters are loaded
-                if hasattr(manager.pipe, "get_active_adapters") and manager.pipe.get_active_adapters():
-                    call_kwargs["joint_attention_kwargs"] = {"scale": lora_scale}
-                
-                output = manager.pipe(**call_kwargs)
+                output = manager.pipe(
+                    prompt=req_dict['prompt'],
+                    num_inference_steps=steps,
+                    guidance_scale=guidance,
+                    width=width,
+                    height=height,
+                    max_sequence_length=512, # 512 for FLUX.1-dev
+                    generator=generator,
+                )
                 img = output.images[0]
                 
             meta = {

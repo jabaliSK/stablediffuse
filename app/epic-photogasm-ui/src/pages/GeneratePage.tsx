@@ -16,7 +16,6 @@ export default function GeneratePage() {
   const [aspectIndex, setAspectIndex] = useState(0); // Default to Full Body 9:16
   const [steps, setSteps] = useState(25); // FLUX.1-dev standard is 20-30 steps
   const [guidance, setGuidance] = useState(3.5); // FLUX.1-dev guidance scale
-  const [loraScale, setLoraScale] = useState(1.0); // Uncensored LoRA weight
   const [seed, setSeed] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   
@@ -37,7 +36,6 @@ export default function GeneratePage() {
       batch_size: typeof batchSize === 'number' ? batchSize : (parseInt(batchSize as string) || 1),
       steps,
       guidance,
-      lora_scale: loraScale,
       seed: seed ? parseInt(seed, 10) : undefined
     });
   };
@@ -94,7 +92,7 @@ export default function GeneratePage() {
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Prompt</label>
-            <span className="text-[10px] text-indigo-400 font-medium">FLUX.1 Dev + Uncensored</span>
+            <span className="text-[10px] text-indigo-400 font-medium">FLUX.1 Dev</span>
           </div>
           <textarea
             value={prompt}
@@ -170,31 +168,9 @@ export default function GeneratePage() {
           </button>
           
           {showAdvanced && (
-            <div className="p-4 pt-2 space-y-4 border-t border-white/5 mt-2">
-              {/* Uncensored LoRA Slider */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between items-center">
-                  <label className="text-[11px] font-medium text-zinc-300">Uncensored LoRA Strength</label>
-                  <span className="text-xs font-mono text-indigo-400 font-semibold">{loraScale.toFixed(2)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.0"
-                  max="1.5"
-                  step="0.05"
-                  value={loraScale}
-                  onChange={(e) => setLoraScale(parseFloat(e.target.value))}
-                  className="w-full accent-indigo-500 cursor-pointer h-1.5 bg-zinc-800 rounded-lg"
-                />
-                <div className="flex justify-between text-[9px] text-zinc-500 font-mono">
-                  <span>0.0 (Off / Base)</span>
-                  <span>1.0 (Full Uncensored)</span>
-                  <span>1.5 (High)</span>
-                </div>
-              </div>
-
+            <div className="p-4 pt-2 border-t border-white/5 mt-2">
               {/* Steps and Guidance Grid */}
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
                     <label className="text-[11px] font-medium text-zinc-400">Steps</label>
