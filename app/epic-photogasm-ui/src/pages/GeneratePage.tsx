@@ -1,7 +1,15 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Wand2, Loader2, Play, Square, SlidersHorizontal } from 'lucide-react';
-import { generateImages, ImageMeta } from '../services/api';
+import { Wand2, Loader2, Play, Square, SlidersHorizontal, CheckCircle2, Images } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { 
+  generateImages, 
+  ImageMeta, 
+  startContinuous, 
+  stopContinuous, 
+  getContinuousStatus, 
+  ContinuousStatus 
+} from '../services/api';
 
 const ASPECT_RATIOS = [
   { label: 'Full Body (9:16)', width: 768, height: 1344, desc: 'Best for standing & action' },
@@ -9,6 +17,8 @@ const ASPECT_RATIOS = [
   { label: 'Square (1:1)', width: 1024, height: 1024, desc: 'Standard 1024px' },
   { label: 'Landscape (16:9)', width: 1344, height: 768, desc: 'Wide cinema' },
 ];
+
+const BATCH_PRESETS = [1, 2, 4, 8, 12];
 
 export default function GeneratePage() {
   const [prompt, setPrompt] = useState('');
@@ -20,25 +30,52 @@ export default function GeneratePage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   
   const [loading, setLoading] = useState(false);
-  const [isContinuous, setIsContinuous] = useState(false);
-  const stopRef = useRef(false);
-  
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<ImageMeta[]>([]);
 
+  // Server-side continuous generation status (persists across phone app-switching)
+  const [continuousStatus, setContinuousStatus] = useState<ContinuousStatus>({
+    active: false,
+    prompt: '',
+    total_generated: 0
+  });
+
   const selectedAspect = ASPECT_RATIOS[aspectIndex];
 
-  const runGeneration = async () => {
-    return await generateImages({
-      prompt,
-      width: selectedAspect.width,
-      height: selectedAspect.height,
-      batch_size: typeof batchSize === 'number' ? batchSize : (parseInt(batchSize as string) || 1),
-      steps,
-      guidance,
-      seed: seed ? parseInt(seed, 10) : undefined
-    });
-  };
+  // Poll server continuous status so phone lock/reload always recovers state
+  useEffect(() => {
+    let isMounted = true;
+    const checkStatus = async () => {
+      try {
+        const status = await getContinuousStatus();
+        if (isMounted) {
+          setContinuousStatus(status);
+          if (status.active && status.prompt && !prompt) {
+            setPrompt(status.prompt);
+          }
+        }
+      } catch (err) {
+        // Server might still be booting or idle
+      }
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 3000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const getPayload = () => ({
+    prompt,
+    width: selectedAspect.width,
+    height: selectedAspect.height,
+    batch_size: typeof batchSize === 'number' ? batchSize : (parseInt(batchSize as string) || 1),
+    steps,
+    guidance,
+    seed: seed ? parseInt(seed, 10) : undefined
+  });
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,50 +86,76 @@ export default function GeneratePage() {
     setResults([]);
     
     try {
-      const images = await runGeneration();
+      const images = await generateImages(getPayload());
       setResults(images);
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      setError(err.message || 'An error occurred during generation');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleContinuous = async () => {
+  const handleStartContinuous = async () => {
     if (!prompt.trim()) return;
-    
-    setIsContinuous(true);
-    stopRef.current = false;
-    setLoading(true);
     setError(null);
-    setResults([]);
-    
     try {
-      while (!stopRef.current) {
-        const images = await runGeneration();
-        if (stopRef.current) break;
-        setResults(prev => [...images, ...prev].slice(0, 20));
-      }
+      const res = await startContinuous(getPayload());
+      setContinuousStatus(res.stats);
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setLoading(false);
-      setIsContinuous(false);
+      setError(err.message || 'Failed to start continuous generation on server');
     }
   };
 
-  const handleStop = () => {
-    stopRef.current = true;
+  const handleStopContinuous = async () => {
+    try {
+      const res = await stopContinuous();
+      setContinuousStatus(res.stats);
+    } catch (err: any) {
+      setError(err.message || 'Failed to stop continuous generation');
+    }
   };
 
   return (
-    <div className="p-6 pb-24 max-w-md mx-auto">
+    <div className="p-4 sm:p-6 pb-28 max-w-md mx-auto">
+      {/* Mobile Background Generation Alert Banner */}
+      {continuousStatus.active && (
+        <div className="mb-5 p-4 rounded-2xl bg-indigo-950/70 border border-indigo-500/40 text-indigo-100 shadow-lg backdrop-blur-md animate-pulse">
+          <div className="flex items-center justify-between mb-2">
+            <span className="flex items-center gap-2 text-xs font-semibold tracking-wide uppercase text-indigo-300">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              Server Running Non-Stop
+            </span>
+            <span className="text-xs font-mono font-bold bg-indigo-500/30 px-2 py-0.5 rounded-full text-indigo-200">
+              {continuousStatus.total_generated} generated
+            </span>
+          </div>
+          <p className="text-xs text-indigo-200/80 leading-relaxed">
+            Generating in background on the GPU. You can lock your phone screen or switch apps; images will keep saving to the Gallery.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleStopContinuous}
+              className="flex-1 py-2 px-3 bg-red-500 hover:bg-red-600 active:scale-95 text-white font-medium text-xs rounded-xl transition-all flex items-center justify-center gap-1.5 shadow"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" /> Stop Loop
+            </button>
+            <Link
+              to="/gallery"
+              className="py-2 px-3 bg-white/10 hover:bg-white/20 active:scale-95 text-zinc-200 font-medium text-xs rounded-xl transition-all flex items-center justify-center gap-1"
+            >
+              <Images className="w-3.5 h-3.5" /> Gallery
+            </Link>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleGenerate} className="space-y-5">
         {/* Prompt */}
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Prompt</label>
-            <span className="text-[10px] text-indigo-400 font-medium">FLUX.1 Dev</span>
+            <span className="text-[10px] text-indigo-400 font-medium">FLUX.1 Dev (Parallel Batch)</span>
           </div>
           <textarea
             value={prompt}
@@ -125,31 +188,57 @@ export default function GeneratePage() {
           </div>
         </div>
 
-        {/* Basic Controls Grid */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Images</label>
-            <input
-              type="number"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={batchSize}
-              onChange={(e) => setBatchSize(e.target.value === '' ? '' : parseInt(e.target.value))}
-              placeholder="1"
-              className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
-            />
+        {/* Batch Size & Seed Controls */}
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Batch Size (1 - 12)</label>
+            <div className="flex gap-1">
+              {BATCH_PRESETS.map((preset) => (
+                <button
+                  type="button"
+                  key={preset}
+                  onClick={() => setBatchSize(preset)}
+                  className={`px-2 py-1 rounded-lg text-xs font-mono transition-all ${
+                    Number(batchSize) === preset
+                      ? 'bg-indigo-500 text-white font-bold'
+                      : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-white/5'
+                  }`}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Seed</label>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={seed}
-              onChange={(e) => setSeed(e.target.value)}
-              placeholder="Random"
-              className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
-            />
+          
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <input
+                type="number"
+                min="1"
+                max="12"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={batchSize}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '') setBatchSize('');
+                  else setBatchSize(Math.max(1, Math.min(12, parseInt(val) || 1)));
+                }}
+                placeholder="1"
+                className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all font-mono"
+              />
+            </div>
+            <div className="space-y-1">
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={seed}
+                onChange={(e) => setSeed(e.target.value)}
+                placeholder="Seed: Random"
+                className="w-full min-h-[44px] bg-zinc-900/50 border border-white/10 rounded-xl p-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+              />
+            </div>
           </div>
         </div>
 
@@ -162,33 +251,32 @@ export default function GeneratePage() {
           >
             <span className="flex items-center gap-2">
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              Advanced Settings
+              Advanced Settings (Steps & Guidance)
             </span>
             <span className="text-[11px] text-zinc-500">{showAdvanced ? 'Hide' : 'Show'}</span>
           </button>
           
           {showAdvanced && (
             <div className="p-4 pt-2 border-t border-white/5 mt-2">
-              {/* Steps and Guidance Grid */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
                     <label className="text-[11px] font-medium text-zinc-400">Steps</label>
-                    <span className="text-[10px] text-zinc-500">20-30</span>
+                    <span className="text-[10px] text-zinc-500">15-20 fast, 25 fine</span>
                   </div>
                   <input
                     type="number"
-                    min="10"
+                    min="1"
                     max="50"
                     value={steps}
-                    onChange={(e) => setSteps(parseInt(e.target.value) || 25)}
-                    className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-2.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    onChange={(e) => setSteps(parseInt(e.target.value) || 20)}
+                    className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-2.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-mono"
                   />
                 </div>
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
                     <label className="text-[11px] font-medium text-zinc-400">Guidance (CFG)</label>
-                    <span className="text-[10px] text-zinc-500">3.5</span>
+                    <span className="text-[10px] text-zinc-500">3.5 default</span>
                   </div>
                   <input
                     type="number"
@@ -197,7 +285,7 @@ export default function GeneratePage() {
                     max="10.0"
                     value={guidance}
                     onChange={(e) => setGuidance(parseFloat(e.target.value) || 3.5)}
-                    className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-2.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    className="w-full bg-zinc-900/50 border border-white/10 rounded-xl p-2.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-mono"
                   />
                 </div>
               </div>
@@ -206,37 +294,35 @@ export default function GeneratePage() {
         </div>
 
         {/* Submit Buttons */}
-        <div className="space-y-3">
-          {!isContinuous ? (
-            <>
-              <button
-                type="submit"
-                disabled={loading || !prompt.trim()}
-                className="w-full min-h-[56px] bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
-              >
-                {loading ? (
-                  <><Loader2 className="w-5 h-5 animate-spin" /> Generating...</>
-                ) : (
-                  <><Wand2 className="w-5 h-5" /> Generate Once</>
-                )}
-              </button>
-              
-              <button
-                type="button"
-                onClick={handleContinuous}
-                disabled={loading || !prompt.trim()}
-                className="w-full min-h-[56px] bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800/50 disabled:text-zinc-600 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
-              >
-                <Play className="w-5 h-5" /> Continuous Generation
-              </button>
-            </>
+        <div className="space-y-3 pt-1">
+          <button
+            type="submit"
+            disabled={loading || continuousStatus.active || !prompt.trim()}
+            className="w-full min-h-[56px] bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98] shadow-md"
+          >
+            {loading ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /> Generating {batchSize} image(s)...</>
+            ) : (
+              <><Wand2 className="w-5 h-5" /> Generate {Number(batchSize) > 1 ? `Batch (${batchSize})` : 'Once'}</>
+            )}
+          </button>
+          
+          {!continuousStatus.active ? (
+            <button
+              type="button"
+              onClick={handleStartContinuous}
+              disabled={loading || !prompt.trim()}
+              className="w-full min-h-[56px] bg-zinc-900 hover:bg-zinc-800 border border-white/10 disabled:bg-zinc-900/50 disabled:text-zinc-600 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+            >
+              <Play className="w-5 h-5 text-emerald-400 fill-emerald-400/20" /> Continuous Generation (Server-Side)
+            </button>
           ) : (
             <button
               type="button"
-              onClick={handleStop}
-              className="w-full min-h-[56px] bg-red-500 hover:bg-red-600 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              onClick={handleStopContinuous}
+              className="w-full min-h-[56px] bg-red-500 hover:bg-red-600 active:scale-[0.98] text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 shadow-lg"
             >
-              <Square className="w-5 h-5" /> Stop Generation
+              <Square className="w-5 h-5 fill-current" /> Stop Continuous Generation
             </button>
           )}
         </div>
@@ -251,14 +337,17 @@ export default function GeneratePage() {
       {/* Results */}
       {results.length > 0 && (
         <div className="mt-8 space-y-4">
-          <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Results</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">Latest Batch ({results.length})</h3>
+            <Link to="/gallery" className="text-xs text-indigo-400 hover:underline">View All in Gallery →</Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             {results.map((img, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.1 }}
+                transition={{ delay: 0.05 }}
                 className="aspect-square rounded-2xl overflow-hidden bg-zinc-900 border border-white/5 relative group"
               >
                 <img src={img.url} alt="Generated" className="w-full h-full object-cover" />

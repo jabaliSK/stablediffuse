@@ -35,6 +35,41 @@ export const generateImages = async (params: any): Promise<ImageMeta[]> => {
   }));
 };
 
+export interface ContinuousStatus {
+  active: boolean;
+  prompt: string;
+  total_generated: number;
+  last_image?: string | null;
+  started_at?: string | null;
+}
+
+export const startContinuous = async (params: any): Promise<{ status: string; stats: ContinuousStatus }> => {
+  const response = await fetch(`${API_URL}/continuous/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Failed to start continuous generation');
+  }
+  return await response.json();
+};
+
+export const stopContinuous = async (): Promise<{ status: string; stats: ContinuousStatus }> => {
+  const response = await fetch(`${API_URL}/continuous/stop`, {
+    method: 'POST',
+  });
+  if (!response.ok) throw new Error('Failed to stop continuous generation');
+  return await response.json();
+};
+
+export const getContinuousStatus = async (): Promise<ContinuousStatus> => {
+  const response = await fetch(`${API_URL}/continuous/status`);
+  if (!response.ok) throw new Error('Failed to fetch continuous status');
+  return await response.json();
+};
+
 export const fetchGallery = async (): Promise<ImageMeta[]> => {
   const response = await fetch(`${API_URL}/gallery`);
   if (!response.ok) throw new Error('Failed to fetch gallery');
