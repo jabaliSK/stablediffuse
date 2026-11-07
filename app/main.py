@@ -11,6 +11,8 @@ import torch
 import asyncio
 import threading
 import time
+import re
+import random
 from datetime import datetime
 from typing import List, Optional
 
@@ -138,9 +140,72 @@ class GenerationRequest(BaseModel):
     batch_size: Optional[int] = Field(default=1, ge=1, le=12)
     seed: Optional[int] = None
     negative_prompt: Optional[str] = None
+    auto_variance: Optional[bool] = False  # Photoshoot mode toggle (active ONLY in continuous mode)
 
     class Config:
         extra = "ignore"
+
+# --- Continuous Variance Engine (Options 1 & 2) ---
+VARIANCE_POOLS = {
+    "poses": [
+        "standing confidently with natural relaxed posture",
+        "walking forward with dynamic natural stride",
+        "leaning casually against a surface with one leg bent",
+        "looking over shoulder with graceful candid turn",
+        "adjusting hair with one hand in authentic candid moment",
+        "sitting comfortably with relaxed modern posture",
+        "slight three-quarter profile turning toward camera",
+        "hand gently resting near collarbone in candid fashion pose",
+        "standing with subtle shift in weight and head tilt",
+    ],
+    "expressions": [
+        "subtle soft smile",
+        "gentle thoughtful expression",
+        "playful candid smirk",
+        "calm serene look",
+        "confident focused gaze",
+        "warm authentic candid expression",
+    ],
+    "hair": [
+        "loose natural waves",
+        "messy high bun with soft framing strands",
+        "sleek straight layered hair",
+        "textured shoulder-length bob",
+        "soft natural voluminous curls",
+        "casual low ponytail with loose tendrils",
+    ],
+    "lighting": [
+        "warm golden hour sunset lighting",
+        "soft natural morning window light",
+        "diffused overcast outdoor daylight",
+        "subtle cinematic rim lighting with shallow depth of field",
+    ],
+}
+
+def resolve_wildcards(text: str) -> str:
+    """Replaces {option1|option2|option3} with a randomly chosen option (Option 2)."""
+    def replace_fn(match):
+        options = match.group(1).split('|')
+        return random.choice(options).strip()
+    
+    pattern = re.compile(r'\{([^{}]+)\}')
+    prev = None
+    curr = text
+    # Run loop to support nested wildcards if any
+    while prev != curr:
+        prev = curr
+        curr = pattern.sub(replace_fn, curr)
+    return curr
+
+def apply_photoshoot_variance(base_prompt: str) -> str:
+    """Appends subtle photoshoot variance (pose, expression, hair, lighting) to prompt (Option 1)."""
+    pose = random.choice(VARIANCE_POOLS["poses"])
+    expr = random.choice(VARIANCE_POOLS["expressions"])
+    light = random.choice(VARIANCE_POOLS["lighting"])
+    
+    # Clean ending punctuation before appending subtle variation
+    cleaned = base_prompt.rstrip(',. ')
+    return f"{cleaned}, {pose}, {expr}, {light}"
 
 # --- Core Logic ---
 def save_image_with_metadata(img, meta, run_dir):
@@ -248,6 +313,16 @@ def continuous_worker(params: dict):
             
             # Generate 1 or 2 images per continuous step
             chunk_params = dict(params)
+            
+            # Continuous-Only Variance: Resolve inline wildcards {a|b|c} (Option 2)
+            raw_prompt = params.get("prompt", "")
+            iter_prompt = resolve_wildcards(raw_prompt)
+            
+            # Continuous-Only Variance: Apply subtle photoshoot variance if toggled (Option 1)
+            if params.get("auto_variance"):
+                iter_prompt = apply_photoshoot_variance(iter_prompt)
+                
+            chunk_params["prompt"] = iter_prompt
             chunk_params["batch_size"] = min(2, int(params.get("batch_size") or 1))
             
             results = generate_and_save_sync(chunk_params, base_seed, ts, run_dir, run_folder)

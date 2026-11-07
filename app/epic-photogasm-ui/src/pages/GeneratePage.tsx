@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Wand2, Loader2, Play, Square, SlidersHorizontal, CheckCircle2, Images } from 'lucide-react';
+import { Wand2, Loader2, Play, Square, SlidersHorizontal, CheckCircle2, Images, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { 
   generateImages, 
@@ -20,6 +20,13 @@ const ASPECT_RATIOS = [
 
 const BATCH_PRESETS = [1, 2, 4, 8, 12];
 
+// Accurate heuristic matching CLIP/T5 tokenizer token counts
+const countTokens = (text: string): number => {
+  if (!text || !text.trim()) return 0;
+  const matches = text.trim().match(/\w+|[^\w\s]/g);
+  return matches ? matches.length : 0;
+};
+
 export default function GeneratePage() {
   const [prompt, setPrompt] = useState('');
   const [batchSize, setBatchSize] = useState<number | string>(1);
@@ -28,6 +35,7 @@ export default function GeneratePage() {
   const [guidance, setGuidance] = useState(3.5); // FLUX.1-dev guidance scale
   const [seed, setSeed] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [autoVariance, setAutoVariance] = useState(true); // Photoshoot mode: active ONLY in continuous mode
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +49,14 @@ export default function GeneratePage() {
   });
 
   const selectedAspect = ASPECT_RATIOS[aspectIndex];
+  const tokenCount = countTokens(prompt);
+
+  const getTokenColor = (count: number) => {
+    if (count > 512) return 'text-red-400 font-bold';
+    if (count > 450) return 'text-amber-400 font-medium';
+    if (count > 77) return 'text-indigo-400 font-medium';
+    return 'text-zinc-400';
+  };
 
   // Poll server continuous status so phone lock/reload always recovers state
   useEffect(() => {
@@ -67,14 +83,16 @@ export default function GeneratePage() {
     };
   }, []);
 
-  const getPayload = () => ({
+  const getPayload = (isContinuous = false) => ({
     prompt,
     width: selectedAspect.width,
     height: selectedAspect.height,
     batch_size: typeof batchSize === 'number' ? batchSize : (parseInt(batchSize as string) || 1),
     steps,
     guidance,
-    seed: seed ? parseInt(seed, 10) : undefined
+    seed: seed ? parseInt(seed, 10) : undefined,
+    // CRITICAL: Photoshoot variance and wildcards only take effect during continuous generation
+    auto_variance: isContinuous ? autoVariance : false
   });
 
   const handleGenerate = async (e: React.FormEvent) => {
@@ -86,7 +104,8 @@ export default function GeneratePage() {
     setResults([]);
     
     try {
-      const images = await generateImages(getPayload());
+      // Normal generation: isContinuous = false (photoshoot variance is completely disabled)
+      const images = await generateImages(getPayload(false));
       setResults(images);
     } catch (err: any) {
       setError(err.message || 'An error occurred during generation');
@@ -99,7 +118,8 @@ export default function GeneratePage() {
     if (!prompt.trim()) return;
     setError(null);
     try {
-      const res = await startContinuous(getPayload());
+      // Continuous mode: isContinuous = true (photoshoot variance & wildcards are enabled)
+      const res = await startContinuous(getPayload(true));
       setContinuousStatus(res.stats);
     } catch (err: any) {
       setError(err.message || 'Failed to start continuous generation on server');
@@ -155,7 +175,11 @@ export default function GeneratePage() {
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <label className="block text-xs font-medium text-zinc-400 uppercase tracking-wider">Prompt</label>
-            <span className="text-[10px] text-indigo-400 font-medium">FLUX.1 Dev (Parallel Batch)</span>
+            <div className="flex items-center gap-2">
+              <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md bg-zinc-900 border border-white/5 ${getTokenColor(tokenCount)}`}>
+                {tokenCount} / 512 tokens
+              </span>
+            </div>
           </div>
           <textarea
             value={prompt}
@@ -298,7 +322,7 @@ export default function GeneratePage() {
           <button
             type="submit"
             disabled={loading || continuousStatus.active || !prompt.trim()}
-            className="w-full min-h-[56px] bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98] shadow-md"
+            className="w-full min-h-[56px] bg-indigo-500 hover:bg-indigo-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98] shadow-md cursor-pointer"
           >
             {loading ? (
               <><Loader2 className="w-5 h-5 animate-spin" /> Generating {batchSize} image(s)...</>
@@ -306,13 +330,36 @@ export default function GeneratePage() {
               <><Wand2 className="w-5 h-5" /> Generate {Number(batchSize) > 1 ? `Batch (${batchSize})` : 'Once'}</>
             )}
           </button>
+
+          {/* Photoshoot Variance Toggle (Continuous Mode Only) */}
+          <div className="p-3.5 bg-zinc-900/60 border border-white/5 rounded-2xl flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="text-xs font-medium text-zinc-200">Photoshoot Variance</span>
+                <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono font-medium">Continuous Only</span>
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-tight">
+                Auto-varies poses, expressions, hair & lighting across continuous iterations. Supports wildcards like <code className="text-indigo-300 font-mono text-[10px]">&#123;blonde|brunette&#125;</code>.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAutoVariance(!autoVariance)}
+              className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 ease-in-out shrink-0 mt-0.5 cursor-pointer ${
+                autoVariance ? 'bg-indigo-600 justify-end' : 'bg-zinc-800 justify-start'
+              }`}
+            >
+              <span className="w-4 h-4 rounded-full bg-white shadow-sm" />
+            </button>
+          </div>
           
           {!continuousStatus.active ? (
             <button
               type="button"
               onClick={handleStartContinuous}
               disabled={loading || !prompt.trim()}
-              className="w-full min-h-[56px] bg-zinc-900 hover:bg-zinc-800 border border-white/10 disabled:bg-zinc-900/50 disabled:text-zinc-600 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+              className="w-full min-h-[56px] bg-zinc-900 hover:bg-zinc-800 border border-white/10 disabled:bg-zinc-900/50 disabled:text-zinc-600 text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
             >
               <Play className="w-5 h-5 text-emerald-400 fill-emerald-400/20" /> Continuous Generation (Server-Side)
             </button>
@@ -320,7 +367,7 @@ export default function GeneratePage() {
             <button
               type="button"
               onClick={handleStopContinuous}
-              className="w-full min-h-[56px] bg-red-500 hover:bg-red-600 active:scale-[0.98] text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 shadow-lg"
+              className="w-full min-h-[56px] bg-red-500 hover:bg-red-600 active:scale-[0.98] text-white rounded-2xl p-4 text-base font-medium transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
             >
               <Square className="w-5 h-5 fill-current" /> Stop Continuous Generation
             </button>
